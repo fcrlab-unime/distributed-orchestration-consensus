@@ -78,6 +78,9 @@ type ConsensusModule struct {
 	// urgency to be elected
 	urgency int
 
+	// stopElection is used to stop the election
+	stopElectionChan bool
+
 	// storage is used to persist state.
 	storage Storage
 
@@ -125,8 +128,9 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
-	//cm.urgency = rand.Intn(10) + 1
-	cm.urgency = <-getUrgency()
+	cm.stopElectionChan = false 
+	cm.urgency = rand.Intn(10) + 1
+	//cm.urgency = <-getUrgency()
 	cm.commitIndex = -1
 	cm.lastApplied = -1
 	cm.nextIndex = make(map[int]int)
@@ -142,12 +146,8 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 		<-ready
 		cm.mu.Lock()
 		cm.electionResetEvent = time.Now()
-		
-		if cm.id != 0{
-			cm.startElection()
-		}
-		cm.mu.Unlock()
-		//cm.runElectionTimer()
+		cm.mu.Unlock()	
+		cm.runElectionTimer()
 	}()
 
 	go cm.commitChanSender()
@@ -417,9 +417,9 @@ func (cm *ConsensusModule) electionTimeout() time.Duration {
 	// generating a hard-coded number very often. This will create collisions
 	// between different servers and force more re-elections.
 	if len(os.Getenv("RAFT_FORCE_MORE_REELECTION")) > 0 && rand.Intn(3) == 0 {
-		return time.Duration(150) * time.Millisecond
+		return time.Duration(150 * len(cm.peerIds)) * time.Millisecond
 	} else {
-		return time.Duration(150+rand.Intn(150)) * time.Millisecond
+		return time.Duration(150 * len(cm.peerIds) +rand.Intn(150)) * time.Millisecond
 	}
 }
 
@@ -434,8 +434,7 @@ func (cm *ConsensusModule) runElectionTimer() {
 	cm.mu.Lock()
 	termStarted := cm.currentTerm
 	cm.mu.Unlock()
-	cm.dlog("election timer started (%v), term=%d", timeoutDuration, termStarted)
-
+	//cm.dlog("election timer started (%v), term=%d", timeoutDuration, termStarted)
 	// This loops until either:
 	// - we discover the election timer is no longer needed, or
 	// - the election timer expires and this CM becomes a candidate
@@ -452,16 +451,16 @@ func (cm *ConsensusModule) runElectionTimer() {
 			cm.mu.Unlock()
 			return
 		}
-
+		
 		if termStarted != cm.currentTerm {
 			cm.dlog("in election timer term changed from %d to %d, bailing out", termStarted, cm.currentTerm)
 			cm.mu.Unlock()
 			return
 		}
-
+		
 		// Start an election if we haven't heard from a leader or haven't voted for
 		// someone for the duration of the timeout.
-		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration {
+		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration && !cm.stopElectionChan {
 			cm.startElection()
 			cm.mu.Unlock()
 			return
@@ -750,4 +749,20 @@ func intMin(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (cm *ConsensusModule) Pause(wg *sync.WaitGroup) {
+	defer wg.Done()
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.becomeFollower(cm.currentTerm)
+	cm.stopElectionChan = true
+}
+
+func (cm *ConsensusModule) Resume(wg *sync.WaitGroup) {
+	defer wg.Done()
+	cm.mu.Lock()
+	cm.stopElectionChan = false
+	cm.mu.Unlock()
+	cm.runElectionTimer()
 }

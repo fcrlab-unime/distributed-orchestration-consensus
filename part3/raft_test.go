@@ -185,6 +185,34 @@ func TestCommitOneCommand(t *testing.T) {
 	h.CheckCommittedN(42, 3)
 }
 
+func NewTestCommitOneCommand(t *testing.T) {
+	//defer leaktest.CheckTimeout(t, 100*time.Millisecond)()
+	n := 4
+	h := NewHarness(t, n)
+	defer h.Shutdown()
+
+	//origLeaderId, _ := h.CheckSingleLeader()
+
+	//tlog("submitting 42 to %d", origLeaderId)
+	h.NewSubmitToServer(42)
+	//if !isLeader {
+	//	t.Errorf("want id=%d leader, but it's not", origLeaderId)
+	//}
+
+	sleepMs(250)
+	//h.CheckCommittedN(42, 3)
+	nc, _ := h.CheckCommitted(42)
+
+	if nc == n {
+		h.Pause()
+	}
+	sleepMs(1000)
+	h.NewSubmitToServer(43)
+	sleepMs(1000)
+	
+	h.CheckCommitted(43)	
+}
+
 func TestSubmitNonLeaderFails(t *testing.T) {
 	h := NewHarness(t, 3)
 	defer h.Shutdown()

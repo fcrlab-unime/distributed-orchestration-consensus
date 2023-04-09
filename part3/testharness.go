@@ -22,6 +22,7 @@ func init() {
 
 type Harness struct {
 	mu sync.Mutex
+	wg sync.WaitGroup
 
 	// cluster is a list of all the raft servers participating in a cluster.
 	cluster []*Server
@@ -46,6 +47,8 @@ type Harness struct {
 	// connected implies alive.
 	alive []bool
 
+	inPause bool
+
 	n int
 	t *testing.T
 }
@@ -60,6 +63,7 @@ func NewHarness(t *testing.T, n int) *Harness {
 	commits := make([][]CommitEntry, n)
 	ready := make(chan interface{})
 	storage := make([]*MapStorage, n)
+	inPause := false
 
 	// Create all Servers in this cluster, assign ids and peer ids.
 	for i := 0; i < n; i++ {
@@ -95,6 +99,7 @@ func NewHarness(t *testing.T, n int) *Harness {
 		commits:     commits,
 		connected:   connected,
 		alive:       alive,
+		inPause:	 inPause,
 		n:           n,
 		t:           t,
 	}
@@ -233,6 +238,21 @@ func (h *Harness) CheckNoLeader() {
 	}
 }
 
+func (h *Harness) GetLeader() (int){
+	leaderId, _ := h.CheckSingleLeader()
+
+	if leaderId == -1 {
+		for i := 0; i < h.n; i++ {
+			if h.connected[i] {
+				h.cluster[i].cm.runElectionTimer()
+			}
+		}
+		leaderId, _ = h.CheckSingleLeader()
+	}
+
+	return leaderId
+}
+
 // CheckCommitted verifies that all connected servers have cmd committed with
 // the same index. It also verifies that all commands *before* cmd in
 // the commit sequence match. For this to work properly, all commands submitted
@@ -334,6 +354,14 @@ func (h *Harness) SubmitToServer(serverId int, cmd interface{}) bool {
 	return h.cluster[serverId].cm.Submit(cmd)
 }
 
+func (h *Harness) NewSubmitToServer(cmd interface{}) bool {
+	if h.inPause {
+		h.Resume()
+	}
+	serverId := h.GetLeader()
+	return h.cluster[serverId].cm.Submit(cmd)
+}
+
 func tlog(format string, a ...interface{}) {
 	format = "[TEST] " + format
 	log.Printf(format, a...)
@@ -353,4 +381,26 @@ func (h *Harness) collectCommits(i int) {
 		h.commits[i] = append(h.commits[i], c)
 		h.mu.Unlock()
 	}
+}
+
+func (h *Harness) Pause() {
+	h.wg.Add(h.n)
+	for i := 0; i < h.n; i++ {
+		if h.connected[i] {
+			go h.cluster[i].cm.Pause(&h.wg)
+		}
+	}
+	h.inPause = true
+	h.wg.Wait()
+}
+
+func (h *Harness) Resume() {
+	h.wg.Add(h.n)
+	for i := 0; i < h.n; i++ {
+		if h.connected[i] {
+			go h.cluster[i].cm.Resume(&h.wg)
+		}
+	}
+	h.inPause = false
+	h.wg.Wait()
 }
