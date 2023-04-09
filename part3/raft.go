@@ -75,6 +75,9 @@ type ConsensusModule struct {
 	// to peers.
 	server *Server
 
+	// urgency to be elected
+	urgency int
+
 	// storage is used to persist state.
 	storage Storage
 
@@ -122,6 +125,7 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
+	cm.urgency = rand.Intn(10) + 1
 	cm.commitIndex = -1
 	cm.lastApplied = -1
 	cm.nextIndex = make(map[int]int)
@@ -137,8 +141,12 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 		<-ready
 		cm.mu.Lock()
 		cm.electionResetEvent = time.Now()
+		
+		if cm.id != 0{
+			cm.startElection()
+		}
 		cm.mu.Unlock()
-		cm.runElectionTimer()
+		//cm.runElectionTimer()
 	}()
 
 	go cm.commitChanSender()
@@ -249,6 +257,7 @@ type RequestVoteArgs struct {
 	CandidateId  int
 	LastLogIndex int
 	LastLogTerm  int
+	Urgency      int
 }
 
 type RequestVoteReply struct {
@@ -275,6 +284,10 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
 		(args.LastLogTerm > lastLogTerm ||
 			(args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)) {
+		cm.mu.Unlock()
+		runVoteDelay(args.Urgency)
+		cm.mu.Lock()
+		cm.dlog("waited for vote delay of %v", time.Duration(1000/args.Urgency)*time.Millisecond)
 		reply.VoteGranted = true
 		cm.votedFor = args.CandidateId
 		cm.electionResetEvent = time.Now()
@@ -456,6 +469,12 @@ func (cm *ConsensusModule) runElectionTimer() {
 	}
 }
 
+func runVoteDelay(urgency int) {
+	delay := time.Duration(100/urgency) * time.Millisecond
+	//fmt.Printf("delay: %d\n", time.Duration((1 / float64(urgency)) * float64(time.Millisecond)))
+	time.Sleep(delay)
+}
+
 // startElection starts a new election with this CM as a candidate.
 // Expects cm.mu to be locked.
 func (cm *ConsensusModule) startElection() {
@@ -464,7 +483,7 @@ func (cm *ConsensusModule) startElection() {
 	savedCurrentTerm := cm.currentTerm
 	cm.electionResetEvent = time.Now()
 	cm.votedFor = cm.id
-	cm.dlog("becomes Candidate (currentTerm=%d); log=%v", savedCurrentTerm, cm.log)
+	cm.dlog("becomes Candidate (currentTerm=%d); log=%v; urgency=%v", savedCurrentTerm, cm.log, cm.urgency)
 
 	votesReceived := 1
 
@@ -480,6 +499,7 @@ func (cm *ConsensusModule) startElection() {
 				CandidateId:  cm.id,
 				LastLogIndex: savedLastLogIndex,
 				LastLogTerm:  savedLastLogTerm,
+				Urgency:      cm.urgency,
 			}
 
 			cm.dlog("sending RequestVote to %d: %+v", peerId, args)
