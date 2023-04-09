@@ -125,7 +125,8 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
-	cm.urgency = rand.Intn(10) + 1
+	//cm.urgency = rand.Intn(10) + 1
+	cm.urgency = <-getUrgency()
 	cm.commitIndex = -1
 	cm.lastApplied = -1
 	cm.nextIndex = make(map[int]int)
@@ -280,13 +281,13 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 		cm.becomeFollower(args.Term)
 	}
 
+	cm.mu.Unlock()
+	runVoteDelay(args.Urgency)
+	cm.mu.Lock()
 	if cm.currentTerm == args.Term &&
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
 		(args.LastLogTerm > lastLogTerm ||
 			(args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)) {
-		cm.mu.Unlock()
-		runVoteDelay(args.Urgency)
-		cm.mu.Lock()
 		cm.dlog("waited for vote delay of %v", time.Duration(1000/args.Urgency)*time.Millisecond)
 		reply.VoteGranted = true
 		cm.votedFor = args.CandidateId
