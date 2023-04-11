@@ -763,6 +763,7 @@ func (cm *ConsensusModule) Resume(wg *sync.WaitGroup) {
 	defer wg.Done()
 	cm.mu.Lock()
 	cm.stopElectionChan = false
+	cm.electionResetEvent = time.Now()
 	cm.mu.Unlock()
 	cm.runElectionTimer()
 }
