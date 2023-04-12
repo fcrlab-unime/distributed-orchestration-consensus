@@ -147,7 +147,11 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 		cm.mu.Lock()
 		cm.electionResetEvent = time.Now()
 		cm.mu.Unlock()	
-		cm.runElectionTimer()
+		//if cm.id > 5 {
+		//	cm.startElection()
+		//} else {
+			cm.runElectionTimer()
+		//}
 	}()
 
 	go cm.commitChanSender()
@@ -282,7 +286,9 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	}
 
 	cm.mu.Unlock()
-	runVoteDelay(args.Urgency)
+	if cm.state != Candidate {
+		runVoteDelay(args.Urgency)
+	}
 	cm.mu.Lock()
 	if cm.currentTerm == args.Term &&
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
@@ -433,6 +439,10 @@ func (cm *ConsensusModule) runElectionTimer() {
 	timeoutDuration := cm.electionTimeout()
 	cm.mu.Lock()
 	termStarted := cm.currentTerm
+    if cm.stopElectionChan {
+	cm.mu.Unlock()
+        return
+    }
 	cm.mu.Unlock()
 	//cm.dlog("election timer started (%v), term=%d", timeoutDuration, termStarted)
 	// This loops until either:
@@ -460,7 +470,7 @@ func (cm *ConsensusModule) runElectionTimer() {
 		
 		// Start an election if we haven't heard from a leader or haven't voted for
 		// someone for the duration of the timeout.
-		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration && !cm.stopElectionChan {
+		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration {
 			cm.startElection()
 			cm.mu.Unlock()
 			return
@@ -762,8 +772,7 @@ func (cm *ConsensusModule) Pause(wg *sync.WaitGroup) {
 func (cm *ConsensusModule) Resume(wg *sync.WaitGroup) {
 	defer wg.Done()
 	cm.mu.Lock()
-	cm.stopElectionChan = false
 	cm.electionResetEvent = time.Now()
+	cm.stopElectionChan = false
 	cm.mu.Unlock()
-	cm.runElectionTimer()
 }

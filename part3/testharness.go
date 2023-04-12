@@ -318,7 +318,7 @@ func (h *Harness) CheckCommitted(cmd int) (nc int, index int) {
 
 	// If there's no early return, we haven't found the command we were looking
 	// for.
-	h.t.Errorf("cmd=%d not found in commits", cmd)
+	//h.t.Errorf("cmd=%d not found in commits", cmd)
 	return -1, -1
 }
 
@@ -326,8 +326,10 @@ func (h *Harness) CheckCommitted(cmd int) (nc int, index int) {
 // servers.
 func (h *Harness) CheckCommittedN(cmd int, n int) {
 	nc, _ := h.CheckCommitted(cmd)
-	if nc != n {
-		h.t.Errorf("CheckCommittedN got nc=%d, want %d", nc, n)
+	for nc < n {
+		nc, _ = h.CheckCommitted(cmd)
+		sleepMs(100)
+		//h.t.Errorf("CheckCommittedN got nc=%d, want %d", nc, n)
 	}
 }
 

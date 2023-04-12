@@ -187,20 +187,18 @@ func TestCommitOneCommand(t *testing.T) {
 
 func TestNewCommitOneCommand(t *testing.T) {
 	//defer leaktest.CheckTimeout(t, 100*time.Millisecond)()
-	n := 4
-	k := 5
+	n := 10
+	k := 3
 	h := NewHarness(t, n)
 	defer h.Shutdown()
 
-	
+
 	for i := 0; i < k; i++ {
-		sleepMs(1000)
-		h.NewSubmitToServer(40 + k)
-		sleepMs(1000)
-	
-		nc, _ := h.CheckCommitted(40 + k)
-		
-		if nc == n && i < k - 1 {
+		h.NewSubmitToServer(40 + i)
+
+		h.CheckCommittedN(40 + i, n)
+
+		if i < k - 1 {
 			h.Pause()
 		}
 	}
