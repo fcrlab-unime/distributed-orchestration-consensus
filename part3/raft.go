@@ -75,8 +75,8 @@ type ConsensusModule struct {
 	// to peers.
 	server *Server
 
-	// urgency to be elected
-	urgency int
+	// loadLevel is the load level of this CM
+	loadLevel int
 
 	// stopElection is used to stop the election
 	stopElectionChan bool
@@ -128,9 +128,9 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
-	cm.stopElectionChan = false 
-	cm.urgency = rand.Intn(10) + 1
-	//cm.urgency = <-getUrgency()
+	cm.stopElectionChan = true 
+	//cm.loadLevel = rand.Intn(10) + 1
+	cm.loadLevel = 10
 	cm.commitIndex = -1
 	cm.lastApplied = -1
 	cm.nextIndex = make(map[int]int)
@@ -153,7 +153,8 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 			cm.runElectionTimer()
 		//}
 	}()
-
+	
+	go cm.monitorLoad()
 	go cm.commitChanSender()
 	return cm
 }
@@ -262,12 +263,13 @@ type RequestVoteArgs struct {
 	CandidateId  int
 	LastLogIndex int
 	LastLogTerm  int
-	Urgency      int
+	LoadLevel      int
 }
 
 type RequestVoteReply struct {
 	Term        int
 	VoteGranted bool
+	LoadLevel   int
 }
 
 // RequestVote RPC.
@@ -287,15 +289,16 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 
 	cm.mu.Unlock()
 	if cm.state != Candidate {
-		runVoteDelay(args.Urgency)
+		runVoteDelay(args.LoadLevel)
 	}
 	cm.mu.Lock()
 	if cm.currentTerm == args.Term &&
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
 		(args.LastLogTerm > lastLogTerm ||
 			(args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)) {
-		cm.dlog("waited for vote delay of %v", time.Duration(1000/args.Urgency)*time.Millisecond)
+		cm.dlog("waited for vote delay of %v", time.Duration(1000/args.LoadLevel)*time.Millisecond)
 		reply.VoteGranted = true
+		reply.LoadLevel = cm.loadLevel
 		cm.votedFor = args.CandidateId
 		cm.electionResetEvent = time.Now()
 	} else {
@@ -479,9 +482,9 @@ func (cm *ConsensusModule) runElectionTimer() {
 	}
 }
 
-func runVoteDelay(urgency int) {
-	delay := time.Duration(100/urgency) * time.Millisecond
-	//fmt.Printf("delay: %d\n", time.Duration((1 / float64(urgency)) * float64(time.Millisecond)))
+func runVoteDelay(loadLevel int) {
+	delay := time.Duration(100/loadLevel) * time.Millisecond
+	//fmt.Printf("delay: %d\n", time.Duration((1 / float64(loadLevel)) * float64(time.Millisecond)))
 	time.Sleep(delay)
 }
 
@@ -493,7 +496,7 @@ func (cm *ConsensusModule) startElection() {
 	savedCurrentTerm := cm.currentTerm
 	cm.electionResetEvent = time.Now()
 	cm.votedFor = cm.id
-	cm.dlog("becomes Candidate (currentTerm=%d); log=%v; urgency=%v", savedCurrentTerm, cm.log, cm.urgency)
+	cm.dlog("becomes Candidate (currentTerm=%d); log=%v; loadLevel=%v", savedCurrentTerm, cm.log, cm.loadLevel)
 
 	votesReceived := 1
 
@@ -509,7 +512,7 @@ func (cm *ConsensusModule) startElection() {
 				CandidateId:  cm.id,
 				LastLogIndex: savedLastLogIndex,
 				LastLogTerm:  savedLastLogTerm,
-				Urgency:      cm.urgency,
+				LoadLevel:      cm.loadLevel,
 			}
 
 			cm.dlog("sending RequestVote to %d: %+v", peerId, args)
@@ -775,4 +778,17 @@ func (cm *ConsensusModule) Resume(wg *sync.WaitGroup) {
 	cm.electionResetEvent = time.Now()
 	cm.stopElectionChan = false
 	cm.mu.Unlock()
+	cm.runElectionTimer()
+}
+
+func (cm *ConsensusModule) monitorLoad() {
+	load := 0
+	//
+	for {
+		load = getLoadLevel()
+		cm.mu.Lock()
+		cm.loadLevel = load
+		cm.mu.Unlock()
+		time.Sleep(300 * time.Millisecond)	
+	}
 }

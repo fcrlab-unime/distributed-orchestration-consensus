@@ -80,29 +80,23 @@ func getResources() (cpu float64, mem float64) {
 	return getCPUPercent(), getMemPercent()
 }
 
-func WeightedSum (a float64, b float64, weightA float64, weightB float64) float64 {
+func WeightedSum(a float64, b float64, weightA float64, weightB float64) float64 {
 	return (a * weightA + b * weightB) / (weightA + weightB)
 }
 
-func getUrgency() <-chan int {
-	urgency := make(chan int)
-	
-	go func() {
-		defer close(urgency)
+func getLoadLevel() int {
+	loadLevel := 0
+	cpu, mem := getResources()
+	sum := int(WeightedSum(cpu, mem, 0.5, 0.5) / 10)
+	if sum < 1 {
+		loadLevel = 1
+	} else if sum > 10 {
+		loadLevel = 10
+	} else {
+		loadLevel = sum
+	}
 
-		cpu, mem := getResources()
-		sum := int(WeightedSum(cpu, mem, 0.5, 0.5) / 10)
-		if sum < 1 {
-			urgency <- 1
-		} else if sum > 10 {
-			urgency <- 10
-		} else {
-			urgency <- sum
-		}
-
-	}()
-
-	return urgency
+	return loadLevel
 }
 
 //func main () {
