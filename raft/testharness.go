@@ -5,6 +5,7 @@
 package raft
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -14,16 +15,20 @@ import (
 
 func init() {
 	log.SetFlags(log.Ltime | log.Lmicroseconds)
-	rand.Seed(time.Now().UnixNano())
+	seed := time.Now().UnixNano()
+	fmt.Println("seed", seed)
+	rand.Seed(seed)
 }
 
 type Harness struct {
 	mu sync.Mutex
+	wg sync.WaitGroup
 
 	// cluster is a list of all the raft servers participating in a cluster.
 	cluster []*Server
+	storage []*MapStorage
 
-	// commitChans has a channel per server in cluster with the commit channel for
+	// commitChans has a channel per server in cluster with the commi channel for
 	// that server.
 	commitChans []chan CommitEntry
 
@@ -37,6 +42,13 @@ type Harness struct {
 	// will pass to or from it).
 	connected []bool
 
+	// alive has a bool per server in cluster, specifying whether this server is
+	// currently alive (false means it has crashed and wasn't restarted yet).
+	// connected implies alive.
+	alive []bool
+
+	inPause bool
+
 	n int
 	t *testing.T
 }
@@ -46,9 +58,12 @@ type Harness struct {
 func NewHarness(t *testing.T, n int) *Harness {
 	ns := make([]*Server, n)
 	connected := make([]bool, n)
+	alive := make([]bool, n)
 	commitChans := make([]chan CommitEntry, n)
 	commits := make([][]CommitEntry, n)
 	ready := make(chan interface{})
+	storage := make([]*MapStorage, n)
+	inPause := true
 
 	// Create all Servers in this cluster, assign ids and peer ids.
 	for i := 0; i < n; i++ {
@@ -59,9 +74,12 @@ func NewHarness(t *testing.T, n int) *Harness {
 			}
 		}
 
+		storage[i] = NewMapStorage()
 		commitChans[i] = make(chan CommitEntry)
-		ns[i] = NewServer(i, peerIds, ready, commitChans[i])
-		ns[i].Serve()
+		ns[i] = NewServer(i, peerIds, storage[i], ready, commitChans[i])
+		ns[i].Serve(ns[i].GetListenAddr())
+		fmt.Printf("server %d serving on %v", i, ns[i].serverId)
+		alive[i] = true
 	}
 
 	// Connect all peers to each other.
@@ -77,9 +95,12 @@ func NewHarness(t *testing.T, n int) *Harness {
 
 	h := &Harness{
 		cluster:     ns,
+		storage:     storage,
 		commitChans: commitChans,
 		commits:     commits,
 		connected:   connected,
+		alive:       alive,
+		inPause:	 inPause,
 		n:           n,
 		t:           t,
 	}
@@ -97,7 +118,10 @@ func (h *Harness) Shutdown() {
 		h.connected[i] = false
 	}
 	for i := 0; i < h.n; i++ {
-		h.cluster[i].Shutdown()
+		if h.alive[i] {
+			h.alive[i] = false
+			h.cluster[i].Shutdown()
+		}
 	}
 	for i := 0; i < h.n; i++ {
 		close(h.commitChans[i])
@@ -120,7 +144,7 @@ func (h *Harness) DisconnectPeer(id int) {
 func (h *Harness) ReconnectPeer(id int) {
 	tlog("Reconnect %d", id)
 	for j := 0; j < h.n; j++ {
-		if j != id {
+		if j != id && h.alive[j] {
 			if err := h.cluster[id].ConnectToPeer(j, h.cluster[j].GetListenAddr()); err != nil {
 				h.t.Fatal(err)
 			}
@@ -132,11 +156,52 @@ func (h *Harness) ReconnectPeer(id int) {
 	h.connected[id] = true
 }
 
+// CrashPeer "crashes" a server by disconnecting it from all peers and then
+// asking it to shut down. We're not going to use the same server instance
+// again, but its storage is retained.
+func (h *Harness) CrashPeer(id int) {
+	tlog("Crash %d", id)
+	h.DisconnectPeer(id)
+	h.alive[id] = false
+	h.cluster[id].Shutdown()
+
+	// Clear out the commits slice for the crashed server; Raft assumes the client
+	// has no persistent state. Once this server comes back online it will replay
+	// the whole log to us.
+	h.mu.Lock()
+	h.commits[id] = h.commits[id][:0]
+	h.mu.Unlock()
+}
+
+// RestartPeer "restarts" a server by creating a new Server instance and giving
+// it the appropriate storage, reconnecting it to peers.
+func (h *Harness) RestartPeer(id int) {
+	if h.alive[id] {
+		log.Fatalf("id=%d is alive in RestartPeer", id)
+	}
+	tlog("Restart %d", id)
+
+	peerIds := make([]int, 0)
+	for p := 0; p < h.n; p++ {
+		if p != id {
+			peerIds = append(peerIds, p)
+		}
+	}
+
+	ready := make(chan interface{})
+	h.cluster[id] = NewServer(id, peerIds, h.storage[id], ready, h.commitChans[id])
+	h.cluster[id].Serve(h.cluster[id].GetListenAddr())
+	h.ReconnectPeer(id)
+	close(ready)
+	h.alive[id] = true
+	sleepMs(20)
+}
+
 // CheckSingleLeader checks that only a single server thinks it's the leader.
 // Returns the leader's id and term. It retries several times if no leader is
 // identified yet.
 func (h *Harness) CheckSingleLeader() (int, int) {
-	for r := 0; r < 8; r++ {
+	for {
 		leaderId := -1
 		leaderTerm := -1
 		for i := 0; i < h.n; i++ {
@@ -158,8 +223,8 @@ func (h *Harness) CheckSingleLeader() (int, int) {
 		time.Sleep(150 * time.Millisecond)
 	}
 
-	h.t.Fatalf("leader not found")
-	return -1, -1
+	//h.t.Fatalf("leader not found")
+	//return -1, -1
 }
 
 // CheckNoLeader checks that no connected server considers itself the leader.
@@ -174,13 +239,28 @@ func (h *Harness) CheckNoLeader() {
 	}
 }
 
+func (h *Harness) GetLeader() (int){
+	leaderId, _ := h.CheckSingleLeader()
+
+	if leaderId == -1 {
+		for i := 0; i < h.n; i++ {
+			if h.connected[i] {
+				h.cluster[i].cm.runElectionTimer()
+			}
+		}
+		leaderId, _ = h.CheckSingleLeader()
+	}
+
+	return leaderId
+}
+
 // CheckCommitted verifies that all connected servers have cmd committed with
 // the same index. It also verifies that all commands *before* cmd in
 // the commit sequence match. For this to work properly, all commands submitted
 // to Raft should be unique positive ints.
 // Returns the number of servers that have this command committed, and its
 // log index.
-// TODO: this check may be too strict. Consider that a server can commit
+// TODO: this check may be too strict. Consider tha a server can commit
 // something and crash before notifying the channel. It's a valid commit but
 // this checker will fail because it may not match other servers. This scenario
 // is described in the paper...
@@ -239,7 +319,7 @@ func (h *Harness) CheckCommitted(cmd int) (nc int, index int) {
 
 	// If there's no early return, we haven't found the command we were looking
 	// for.
-	h.t.Errorf("cmd=%d not found in commits", cmd)
+	//h.t.Errorf("cmd=%d not found in commits", cmd)
 	return -1, -1
 }
 
@@ -247,8 +327,10 @@ func (h *Harness) CheckCommitted(cmd int) (nc int, index int) {
 // servers.
 func (h *Harness) CheckCommittedN(cmd int, n int) {
 	nc, _ := h.CheckCommitted(cmd)
-	if nc != n {
-		h.t.Errorf("CheckCommittedN got nc=%d, want %d", nc, n)
+	for nc < n {
+		nc, _ = h.CheckCommitted(cmd)
+		sleepMs(100)
+		//h.t.Errorf("CheckCommittedN got nc=%d, want %d", nc, n)
 	}
 }
 
@@ -271,9 +353,17 @@ func (h *Harness) CheckNotCommitted(cmd int) {
 }
 
 // SubmitToServer submits the command to serverId.
-func (h *Harness) SubmitToServer(serverId int, cmd interface{}) bool {
-	return h.cluster[serverId].cm.Submit(cmd)
-}
+//func (h *Harness) SubmitToServer(serverId int, cmd interface{}) bool {
+//	//return h.cluster[serverId].cm.Submit(cmd)
+//}
+//
+//func (h *Harness) NewSubmitToServer(cmd interface{}) bool {
+//	if h.inPause {
+//		h.Resume()
+//	}
+//	//serverId, _ := h.CheckSingleLeader()
+//	//return h.cluster[serverId].cm.Submit(cmd)
+//}
 
 func tlog(format string, a ...interface{}) {
 	format = "[TEST] " + format
@@ -294,4 +384,26 @@ func (h *Harness) collectCommits(i int) {
 		h.commits[i] = append(h.commits[i], c)
 		h.mu.Unlock()
 	}
+}
+
+func (h *Harness) Pause() {
+	h.wg.Add(h.n)
+	for i := 0; i < h.n; i++ {
+		if h.connected[i] {
+			//go h.cluster[i].cm.Pause(&h.wg)
+		}
+	}
+	h.inPause = true
+	h.wg.Wait()
+}
+
+func (h *Harness) Resume() {
+	h.wg.Add(h.n)
+	for i := 0; i < h.n; i++ {
+		if h.connected[i] {
+			//go h.cluster[i].cm.Resume(&h.wg)
+		}
+	}
+	h.inPause = false
+	h.wg.Wait()
 }

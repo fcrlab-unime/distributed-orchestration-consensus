@@ -84,7 +84,7 @@ func WeightedSum(a float64, b float64, weightA float64, weightB float64) float64
 	return (a * weightA + b * weightB) / (weightA + weightB)
 }
 
-func getLoadLevel() int {
+func GetLoadLevel() int {
 	loadLevel := 0
 	cpu, mem := getResources()
 	sum := int(WeightedSum(cpu, mem, 0.5, 0.5) / 10)

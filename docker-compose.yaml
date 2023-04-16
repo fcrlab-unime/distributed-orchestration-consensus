@@ -1,0 +1,16 @@
+version: '3.5'
+
+services:
+  raft:
+    image: raft
+    ports:
+      - "4000"
+      - "9093:9093"
+    networks:
+      - prova
+    deploy:
+      replicas: 3
+
+networks:
+  prova:
+    external: true

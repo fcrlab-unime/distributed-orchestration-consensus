@@ -1,0 +1,18 @@
+version: '3'
+
+services:
+  raft2:
+    image: raft
+    ports:
+      - "4000"
+    networks:
+      - raft
+
+networks:
+  raft:
+#    driver: bridge
+#    ipam:
+#      driver: default
+#      config:
+#        - subnet: "172.19.0.0/24"
+#        - gateway: "172.19.0.254"

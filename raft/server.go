@@ -29,11 +29,15 @@ type Server struct {
 	peerIds  []int
 
 	cm       *ConsensusModule
+	storage  Storage
 	rpcProxy *RPCProxy
+
+	//submitEvent chan interface{}
 
 	rpcServer *rpc.Server
 	listener  net.Listener
 
+	commitChan  chan<- CommitEntry
 	peerClients map[int]*rpc.Client
 
 	ready <-chan interface{}
@@ -41,19 +45,21 @@ type Server struct {
 	wg    sync.WaitGroup
 }
 
-func NewServer(serverId int, peerIds []int, ready <-chan interface{}) *Server {
+func NewServer(serverId int, peerIds []int, storage Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
 	s := new(Server)
 	s.serverId = serverId
 	s.peerIds = peerIds
 	s.peerClients = make(map[int]*rpc.Client)
+	s.storage = storage
 	s.ready = ready
+	s.commitChan = commitChan
 	s.quit = make(chan interface{})
 	return s
 }
 
-func (s *Server) Serve() {
+func (s *Server) Serve(ip net.Addr) {
 	s.mu.Lock()
-	s.cm = NewConsensusModule(s.serverId, s.peerIds, s, s.ready)
+	s.cm = NewConsensusModule(s.serverId, s.peerIds, s, s.storage, s.ready, s.commitChan)
 
 	// Create a new RPC server and register a RPCProxy that forwards all methods
 	// to n.cm
@@ -62,7 +68,7 @@ func (s *Server) Serve() {
 	s.rpcServer.RegisterName("ConsensusModule", s.rpcProxy)
 
 	var err error
-	s.listener, err = net.Listen("tcp", ":0")
+	s.listener, err = net.Listen("tcp", ip.String() + ":4000")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -121,8 +127,9 @@ func (s *Server) GetListenAddr() net.Addr {
 func (s *Server) ConnectToPeer(peerId int, addr net.Addr) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	fmt.Printf("Connecting to peer %d at %s\n", peerId, addr.String())
 	if s.peerClients[peerId] == nil {
-		client, err := rpc.Dial(addr.Network(), addr.String())
+		client, err := rpc.Dial("tcp", addr.String() + ":4000")
 		if err != nil {
 			return err
 		}
@@ -137,6 +144,7 @@ func (s *Server) DisconnectPeer(peerId int) error {
 	defer s.mu.Unlock()
 	if s.peerClients[peerId] != nil {
 		err := s.peerClients[peerId].Close()
+		s.cm.DisconnectPeer(peerId)
 		s.peerClients[peerId] = nil
 		return err
 	}
@@ -197,4 +205,16 @@ func (rpp *RPCProxy) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesR
 		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
 	}
 	return rpp.cm.AppendEntries(args, reply)
+}
+
+func (s *Server) GetQuit() chan interface{} {
+	return s.quit
+}
+
+func (s *Server) GetId() int {
+	return s.serverId
+}
+
+func (s *Server) GetConsensusModule() *ConsensusModule {
+	return s.cm
 }
