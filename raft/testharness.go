@@ -244,9 +244,9 @@ func (h *Harness) GetLeader() (int){
 
 	if leaderId == -1 {
 		for i := 0; i < h.n; i++ {
-			if h.connected[i] {
-				h.cluster[i].cm.runElectionTimer()
-			}
+			//if h.connected[i] {
+			//	//h.cluster[i].cm.runElectionTimer()
+			//}
 		}
 		leaderId, _ = h.CheckSingleLeader()
 	}
@@ -389,9 +389,9 @@ func (h *Harness) collectCommits(i int) {
 func (h *Harness) Pause() {
 	h.wg.Add(h.n)
 	for i := 0; i < h.n; i++ {
-		if h.connected[i] {
-			//go h.cluster[i].cm.Pause(&h.wg)
-		}
+		//if h.connected[i] {
+		//	//go h.cluster[i].cm.Pause(&h.wg)
+		//}
 	}
 	h.inPause = true
 	h.wg.Wait()
@@ -400,9 +400,9 @@ func (h *Harness) Pause() {
 func (h *Harness) Resume() {
 	h.wg.Add(h.n)
 	for i := 0; i < h.n; i++ {
-		if h.connected[i] {
-			//go h.cluster[i].cm.Resume(&h.wg)
-		}
+		//if h.connected[i] {
+		//	//go h.cluster[i].cm.Resume(&h.wg)
+		//}
 	}
 	h.inPause = false
 	h.wg.Wait()

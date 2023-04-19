@@ -103,7 +103,7 @@ func checkNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 		select {
 		case <-server.GetQuit():
 			return
-		case <-time.After(6 * time.Second):
+		case <-time.After(100 * time.Millisecond):
 			ip, mask := getNetworkInfo()
 			newPeersIp := getPeersIp(ip, mask)
 			newPeersIds := []int{}
@@ -170,16 +170,17 @@ func handleConnection(conn net.Conn, server *Server) {
 		n, err := conn.Read(buf[0:])
 	
 		if err != nil {
+			fmt.Printf("\n\nError: %v\n\n", err)
 			return
 		}
-		if n > 0 {
+		if	n > 0 {
 			//TODO: da modificare
 			mess = strings.ReplaceAll(strings.ReplaceAll(string(buf[0:n]), "\n", ""), "\r", "")
 			buf = buf[:0]
 			command, err := strconv.Atoi(mess)
 			fmt.Printf("Received: %v, and error is %v\n", command, err)
 			if err == nil {
-				submit(server, command)
+				submit(server, command) 
 			}
 		}
 	}
@@ -193,5 +194,5 @@ func submit(server *Server, command interface{}) {
 	cm.Wg.Add(1)
 	cm.Submit(command)
 	cm.Wg.Wait()
-	//cm.Pause()
+	cm.Pause()
 }

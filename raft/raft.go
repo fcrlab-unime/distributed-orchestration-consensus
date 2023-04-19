@@ -9,8 +9,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
-	"math/rand"
-	"os"
 	"sync"
 	"time"
 )
@@ -125,7 +123,7 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	cm.server = server
 	cm.storage = storage
 	cm.commitChan = commitChan
-	cm.newCommitReadyChan = make(chan struct{}, 16)
+	cm.newCommitReadyChan = make(chan struct{})
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
@@ -140,19 +138,19 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 		cm.restoreFromStorage()
 	}
 
-	go func() {
-		// The CM is dormant until ready is signaled; then, it starts a countdown
-		// for leader election.
-		<-ready
-		cm.Mu.Lock()
-		cm.electionResetEvent = time.Now()
-		cm.Mu.Unlock()	
-		//if cm.id > 5 {
-		//	cm.startElection()
-		//} else {
-		//	cm.runElectionTimer()
-		//}
-	}()
+	//go func() {
+	//	// The CM is dormant until ready is signaled; then, it starts a countdown
+	//	// for leader election.
+	//	<-ready
+	//	cm.Mu.Lock()
+	//	cm.electionResetEvent = time.Now()
+	//	cm.Mu.Unlock()	
+	//	//if cm.id > 5 {
+	//	//	cm.startElection()
+	//	//} else {
+	//	//	cm.runElectionTimer()
+	//	//}
+	//}()
 	
 	go cm.monitorLoad()
 	go cm.commitChanSender()
@@ -386,7 +384,10 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if args.LeaderCommit > cm.commitIndex {
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.dlog("... setting commitIndex=%d", cm.commitIndex)
+				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
+				cm.Mu.Lock()
+				//cm.stopElectionChan = true
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -418,16 +419,16 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 }
 
 // electionTimeout generates a pseudo-random election timeout duration.
-func (cm *ConsensusModule) electionTimeout() time.Duration {
-	// If RAFT_FORCE_MORE_REELECTION is set, stress-test by deliberately
-	// generating a hard-coded number very often. This will create collisions
-	// between different servers and force more re-elections.
-	if len(os.Getenv("RAFT_FORCE_MORE_REELECTION")) > 0 && rand.Intn(3) == 0 {
-		return time.Duration(150 * len(cm.peerIds)) * time.Millisecond
-	} else {
-		return time.Duration(150 * len(cm.peerIds) +rand.Intn(150)) * time.Millisecond
-	}
-}
+//func (cm *ConsensusModule) electionTimeout() time.Duration {
+//	// If RAFT_FORCE_MORE_REELECTION is set, stress-test by deliberately
+//	// generating a hard-coded number very often. This will create collisions
+//	// between different servers and force more re-elections.
+//	if len(os.Getenv("RAFT_FORCE_MORE_REELECTION")) > 0 && rand.Intn(3) == 0 {
+//		return time.Duration(150 * len(cm.peerIds)) * time.Millisecond
+//	} else {
+//		return time.Duration(150 * len(cm.peerIds) +rand.Intn(150)) * time.Millisecond
+//	}
+//}
 
 // runElectionTimer implements an election timer. It should be launched whenever
 // we want to start a timer towards becoming a candidate in a new election.
@@ -435,49 +436,49 @@ func (cm *ConsensusModule) electionTimeout() time.Duration {
 // This function is blocking and should be launched in a separate goroutine;
 // it's designed to work for a single (one-shot) election timer, as it exits
 // whenever the CM state changes from follower/candidate or the term changes.
-func (cm *ConsensusModule) runElectionTimer() {
-	timeoutDuration := cm.electionTimeout()
-	cm.Mu.Lock()
-	termStarted := cm.currentTerm
-    if cm.stopElectionChan {
-		cm.Mu.Unlock()
-        return
-    }
-	cm.Mu.Unlock()
-	//cm.dlog("election timer started (%v), term=%d", timeoutDuration, termStarted)
-	// This loops until either:
-	// - we discover the election timer is no longer needed, or
-	// - the election timer expires and this CM becomes a candidate
-	// In a follower, this typically keeps running in the background for the
-	// duration of the CM's lifetime.
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		<-ticker.C
-
-		cm.Mu.Lock()
-		if cm.state != Candidate && cm.state != Follower {
-			cm.dlog("in election timer state=%s, bailing out", cm.state)
-			cm.Mu.Unlock()
-			return
-		}
-		
-		if termStarted != cm.currentTerm {
-			cm.dlog("in election timer term changed from %d to %d, bailing out", termStarted, cm.currentTerm)
-			cm.Mu.Unlock()
-			return
-		}
-		
-		// Start an election if we haven't heard from a leader or haven't voted for
-		// someone for the duration of the timeout.
-		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration {
-			cm.StartElection()
-			cm.Mu.Unlock()
-			return
-		}
-		cm.Mu.Unlock()
-	}
-}
+//func (cm *ConsensusModule) runElectionTimer() {
+//	timeoutDuration := cm.electionTimeout()
+//	cm.Mu.Lock()
+//	termStarted := cm.currentTerm
+//    if cm.stopElectionChan {
+//		cm.Mu.Unlock()
+//        return
+//    }
+//	cm.Mu.Unlock()
+//	//cm.dlog("election timer started (%v), term=%d", timeoutDuration, termStarted)
+//	// This loops until either:
+//	// - we discover the election timer is no longer needed, or
+//	// - the election timer expires and this CM becomes a candidate
+//	// In a follower, this typically keeps running in the background for the
+//	// duration of the CM's lifetime.
+//	ticker := time.NewTicker(10 * time.Millisecond)
+//	defer ticker.Stop()
+//	for {
+//		<-ticker.C
+//
+//		cm.Mu.Lock()
+//		if cm.state != Candidate && cm.state != Follower {
+//			cm.dlog("in election timer state=%s, bailing out", cm.state)
+//			cm.Mu.Unlock()
+//			return
+//		}
+//		
+//		if termStarted != cm.currentTerm {
+//			cm.dlog("in election timer term changed from %d to %d, bailing out", termStarted, cm.currentTerm)
+//			cm.Mu.Unlock()
+//			return
+//		}
+//		
+//		// Start an election if we haven't heard from a leader or haven't voted for
+//		// someone for the duration of the timeout.
+//		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration {
+//			cm.StartElection()
+//			cm.Mu.Unlock()
+//			return
+//		}
+//		cm.Mu.Unlock()
+//	}
+//}
 
 func runVoteDelay(loadLevel int) {
 	delay := time.Duration(100/loadLevel) * time.Millisecond
@@ -584,10 +585,12 @@ func (cm *ConsensusModule) startLeader() {
 			doSend := false
 			select {
 			case <-t.C:
-				doSend = true
-
+				
 				// Reset timer to fire again after heartbeatTimeout.
 				t.Stop()
+				if !cm.stopElectionChan {
+					doSend = true
+				}
 				t.Reset(heartbeatTimeout)
 			case _, ok := <-cm.triggerAEChan:
 				if ok {
@@ -614,7 +617,7 @@ func (cm *ConsensusModule) startLeader() {
 				cm.leaderSendAEs()
 			}
 		}
-	}(50 * time.Millisecond)
+	}(2000 * time.Millisecond)
 }
 
 // leaderSendAEs sends a round of AEs to all peers, collects their
@@ -652,10 +655,10 @@ func (cm *ConsensusModule) leaderSendAEs() {
 			var reply AppendEntriesReply
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
 				cm.Mu.Lock()
-				defer cm.Mu.Unlock()
 				if reply.Term > cm.currentTerm {
 					cm.dlog("term out of date in heartbeat reply")
 					cm.becomeFollower(reply.Term)
+					cm.Mu.Unlock()
 					return
 				}
 
@@ -684,8 +687,11 @@ func (cm *ConsensusModule) leaderSendAEs() {
 							// Commit index changed: the leader considers new entries to be
 							// committed. Send new entries on the commit channel to this
 							// leader's clients, and notify followers by sending them AEs.
+							cm.Mu.Unlock()
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
+						} else {
+							cm.Mu.Unlock()
 						}
 					} else {
 						if reply.ConflictTerm >= 0 {
@@ -705,6 +711,7 @@ func (cm *ConsensusModule) leaderSendAEs() {
 							cm.nextIndex[peerId] = reply.ConflictIndex
 						}
 						cm.dlog("AppendEntries reply from %d !success: nextIndex := %d", peerId, ni-1)
+						cm.Mu.Unlock()
 					}
 				}
 			}
@@ -731,7 +738,8 @@ func (cm *ConsensusModule) lastLogIndexAndTerm() (int, int) {
 // the client consumes new committed entries. Returns when newCommitReadyChan is
 // closed.
 func (cm *ConsensusModule) commitChanSender() {
-	for range cm.newCommitReadyChan {
+	for {
+		<-cm.newCommitReadyChan
 		// Find which entries we have to apply.
 		cm.Mu.Lock()
 		savedTerm := cm.currentTerm
@@ -765,17 +773,18 @@ func intMin(a, b int) int {
 func (cm *ConsensusModule) Pause() {
 	cm.Mu.Lock()
 	cm.stopElectionChan = true
-	cm.becomeFollower(cm.currentTerm)
 	cm.Mu.Unlock()
 }
 
 func (cm *ConsensusModule) Resume() {
 	cm.Mu.Lock()
-	//cm.electionResetEvent = time.Now()
 	cm.stopElectionChan = false
-	cm.StartElection()
+	if cm.state == Follower {
+		cm.StartElection()
+	} else {
+		cm.Wg.Done()
+	}
 	cm.Mu.Unlock()
-	//cm.runElectionTimer()
 }
 
 func (cm *ConsensusModule) monitorLoad() {
