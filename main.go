@@ -180,19 +180,8 @@ func handleConnection(conn net.Conn, server *Server) {
 			command, err := strconv.Atoi(mess)
 			fmt.Printf("Received: %v, and error is %v\n", command, err)
 			if err == nil {
-				submit(server, command) 
+				server.Submit(command) 
 			}
 		}
 	}
-}
-
-func submit(server *Server, command interface{}) {
-	cm := server.GetConsensusModule()
-	cm.Wg.Add(1)
-	cm.Resume()
-	cm.Wg.Wait()
-	cm.Wg.Add(1)
-	cm.Submit(command)
-	cm.Wg.Wait()
-	cm.Pause()
 }

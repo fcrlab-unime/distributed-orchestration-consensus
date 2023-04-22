@@ -179,6 +179,8 @@ func (cm *ConsensusModule) Submit(command interface{}) {
 		cm.dlog("... log=%v", cm.log)
 		cm.Mu.Unlock()
 		cm.triggerAEChan <- struct{}{}
+	} else {
+		cm.Mu.Unlock()
 	}
 }
 
@@ -760,7 +762,6 @@ func (cm *ConsensusModule) commitChanSender() {
 			}
 		}
 	}
-	cm.dlog("commitChanSender done")
 }
 
 func intMin(a, b int) int {
@@ -791,9 +792,18 @@ func (cm *ConsensusModule) monitorLoad() {
 	load := 0
 	for {
 		load = GetLoadLevel()
+		//if time.Now().Unix() % 10 == 6 {
+		//	load = 10
+		//}
+
 		cm.Mu.Lock()
 		cm.loadLevel = load
-		cm.Mu.Unlock()
+		if cm.loadLevel > 8 {
+			cm.Mu.Unlock()
+			cm.server.Submit(cm.id)
+		} else {
+			cm.Mu.Unlock()
+		}
 		time.Sleep(300 * time.Millisecond)	
 	}
 }

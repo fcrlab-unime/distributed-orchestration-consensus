@@ -218,3 +218,13 @@ func (s *Server) GetId() int {
 func (s *Server) GetConsensusModule() *ConsensusModule {
 	return s.cm
 }
+
+func (s *Server) Submit(command interface{}) {
+	s.cm.Wg.Add(1)
+	s.cm.Resume()
+	s.cm.Wg.Wait()
+	s.cm.Wg.Add(1)
+	s.cm.Submit(command)
+	s.cm.Wg.Wait()
+	s.cm.Pause()
+}
