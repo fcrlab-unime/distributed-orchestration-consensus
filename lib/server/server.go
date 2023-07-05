@@ -3,7 +3,7 @@
 //
 // Eli Bendersky [https://eli.thegreenplace.net]
 // This code is in the public domain.
-package raft
+package server
 
 import (
 	"fmt"
@@ -12,16 +12,11 @@ import (
 	"net"
 	"net/rpc"
 	"os"
+	st "storage"
 	"sync"
 	"time"
 )
 
-// Server wraps a raft.ConsensusModule along with a rpc.Server that exposes its
-// methods as RPC endpoints. It also manages the peers of the Raft server. The
-// main goal of this type is to simplify the code of raft.Server for
-// presentation purposes. raft.ConsensusModule has a *Server to do its peer
-// communication and doesn't have to worry about the specifics of running an
-// RPC server.
 type Server struct {
 	mu sync.Mutex
 
@@ -29,7 +24,7 @@ type Server struct {
 	peerIds  []int
 
 	cm       *ConsensusModule
-	storage  Storage
+	storage  st.Storage
 	rpcProxy *RPCProxy
 
 	//submitEvent chan interface{}
@@ -45,7 +40,7 @@ type Server struct {
 	wg    sync.WaitGroup
 }
 
-func NewServer(serverId int, peerIds []int, storage Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
+func NewServer(serverId int, peerIds []int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
 	s := new(Server)
 	s.serverId = serverId
 	s.peerIds = peerIds
@@ -68,7 +63,7 @@ func (s *Server) Serve(ip net.Addr) {
 	s.rpcServer.RegisterName("ConsensusModule", s.rpcProxy)
 
 	var err error
-	s.listener, err = net.Listen("tcp", ip.String() + ":4000")
+	s.listener, err = net.Listen("tcp", ip.String()+":4000")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -129,7 +124,7 @@ func (s *Server) ConnectToPeer(peerId int, addr net.Addr) error {
 	defer s.mu.Unlock()
 	fmt.Printf("Connecting to peer %d at %s\n", peerId, addr.String())
 	if s.peerClients[peerId] == nil {
-		client, err := rpc.Dial("tcp", addr.String() + ":4000")
+		client, err := rpc.Dial("tcp", addr.String()+":4000")
 		if err != nil {
 			return err
 		}

@@ -2,12 +2,14 @@
 //
 // Eli Bendersky [https://eli.thegreenplace.net]
 // This code is in the public domain.
-package raft
+package server
 
 import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	st "storage"
+	l "server/load"
 	"log"
 	"sync"
 	"time"
@@ -81,7 +83,7 @@ type ConsensusModule struct {
 	stopElectionChan bool
 
 	// storage is used to persist state.
-	storage Storage
+	storage st.Storage
 
 	// commitChan is the channel where this CM is going to report committed log
 	// entries. It's passed in by the client during construction.
@@ -116,7 +118,7 @@ type ConsensusModule struct {
 // server. The ready channel signals the CM that all peers are connected and
 // it's safe to start its state machine. commitChan is going to be used by the
 // CM to send log entries that have been committed by the Raft cluster.
-func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *ConsensusModule {
+func NewConsensusModule(id int, peerIds []int, server *Server, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *ConsensusModule {
 	cm := new(ConsensusModule)
 	cm.id = id
 	cm.peerIds = peerIds
@@ -144,14 +146,14 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage Storage, 
 	//	<-ready
 	//	cm.Mu.Lock()
 	//	cm.electionResetEvent = time.Now()
-	//	cm.Mu.Unlock()
+	//	cm.Mu.Unlock()	
 	//	//if cm.id > 5 {
 	//	//	cm.startElection()
 	//	//} else {
 	//	//	cm.runElectionTimer()
 	//	//}
 	//}()
-
+	
 	go cm.monitorLoad()
 	go cm.commitChanSender()
 	return cm
@@ -260,7 +262,7 @@ type RequestVoteArgs struct {
 	CandidateId  int
 	LastLogIndex int
 	LastLogTerm  int
-	LoadLevel    int
+	LoadLevel      int
 }
 
 type RequestVoteReply struct {
@@ -464,13 +466,13 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 //			cm.Mu.Unlock()
 //			return
 //		}
-//
+//		
 //		if termStarted != cm.currentTerm {
 //			cm.Dlog("in election timer term changed from %d to %d, bailing out", termStarted, cm.currentTerm)
 //			cm.Mu.Unlock()
 //			return
 //		}
-//
+//		
 //		// Start an election if we haven't heard from a leader or haven't voted for
 //		// someone for the duration of the timeout.
 //		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration {
@@ -535,7 +537,7 @@ func (cm *ConsensusModule) StartElection() {
 				} else if reply.Term == savedCurrentTerm {
 					if reply.VoteGranted {
 						votesReceived += 1
-						if votesReceived*2 > len(cm.peerIds)+1 {
+						if votesReceived*2 > len(cm.server.peerClients)+1 {
 							// Won the election!
 							cm.Dlog("wins election with %d votes", votesReceived)
 							cm.startLeader()
@@ -587,7 +589,7 @@ func (cm *ConsensusModule) startLeader() {
 			doSend := false
 			select {
 			case <-t.C:
-
+				
 				// Reset timer to fire again after heartbeatTimeout.
 				t.Stop()
 				if !cm.stopElectionChan {
@@ -791,7 +793,7 @@ func (cm *ConsensusModule) Resume() {
 func (cm *ConsensusModule) monitorLoad() {
 	load := 0
 	for {
-		load = GetLoadLevel()
+		load = l.GetLoadLevel()
 		//if time.Now().Unix() % 10 == 6 {
 		//	load = 10
 		//}
@@ -804,7 +806,7 @@ func (cm *ConsensusModule) monitorLoad() {
 		} else {
 			cm.Mu.Unlock()
 		}
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)	
 	}
 }
 

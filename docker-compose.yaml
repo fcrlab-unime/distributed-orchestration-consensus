@@ -5,12 +5,12 @@ services:
     image: raft
     ports:
       - "4000"
-      - "9093:9093"
+      - "9093"
     networks:
-      - prova
+      - raft
     deploy:
       replicas: 3
 
 networks:
-  prova:
+  raft:
     external: true

@@ -1,6 +1,6 @@
-FROM golang
+FROM golang:bullseye
 
-RUN apt update && apt -y upgrade && apt -y install fping iproute2 telnet vim
+RUN apt update && apt -y upgrade && apt -y install fping iproute2 telnet vim iputils-ping
 
 COPY . /home/raft
 

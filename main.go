@@ -5,8 +5,9 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	. "raft"
 	"reflect"
+	. "server"
+	. "storage"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +15,6 @@ import (
 
 func main(){
 	server := startServer()
-	_ = server
 	
 	go waitSubmit(server)
 	for{}
@@ -24,8 +24,6 @@ func startServer() *Server {
 	ready := make(chan interface{})
 	storage := NewMapStorage()
 	commitChannel := make(chan CommitEntry)
-	//serverId, _ := strconv.Atoi(os.Getenv("SERVER_ID"))
-	
 	serverIp, subnetMask := getNetworkInfo()
 	serverId, _ := strconv.Atoi(strings.Split(serverIp.String(), ".")[3])
 
@@ -35,7 +33,7 @@ func startServer() *Server {
 
 	// Create all Servers in this cluster, assign ids and peer ids.
 	for p := 0; p < len(peersAddrs); p++ {
-		if peersAddrs[p].String() != serverIp.String() {
+		if peersAddrs[p] != serverIp {
 			id, _ := strconv.Atoi(strings.Split(peersAddrs[p].String(), ".")[3])
 			peers[id] = peersAddrs[p]
 			peersIds = append(peersIds, id)
@@ -70,7 +68,7 @@ func getNetworkInfo() (ip net.Addr, subnetMask string) {
 	infos := []string{}
 	for i := 0; i < len(tmpInfos); i++ {
 		infos = strings.Fields(tmpInfos[i])
-		if strings.Contains(infos[0], "eth0"){
+		if strings.Contains(infos[1], "UP"){
 			infos = strings.Split(infos[2], "/")
 			infos = []string {infos[0], infos[1]}
 			break
@@ -81,11 +79,11 @@ func getNetworkInfo() (ip net.Addr, subnetMask string) {
 	return ip, subnetMask
 }
 
-func getPeersIp(serverIp net.Addr, mask string) (peersIp []net.Addr) {
+func getPeersIp(serverIp net.Addr, subnetMask string) (peersIp []net.Addr) {
 	if _, err := os.Stat("/tmp/ip.txt"); err == nil {
 		os.Truncate("/tmp/ip.txt", 0)
 	}
-	exec.Command("bash", "/home/raft/get_ip.sh", serverIp.String(), mask).Run()
+	exec.Command("bash", "/home/raft/get_ip.sh", serverIp.String(), subnetMask).Run()
 	peersIpFile, _ := os.ReadFile("/tmp/ip.txt")
 	peersIpStr := strings.Split(string(peersIpFile), "\n")
 	for i := 0; i < len(peersIpStr); i++ {
