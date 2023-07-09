@@ -537,7 +537,11 @@ func (cm *ConsensusModule) StartElection() {
 				} else if reply.Term == savedCurrentTerm {
 					if reply.VoteGranted {
 						votesReceived += 1
-						if votesReceived*2 > len(cm.server.peerClients)+1 {
+						if votesReceived*2 > len(cm.server.peerIds)/*+1*/ {
+							// +1 is canceled because it should be the server itself, but
+							// I must subtract 1 because the default gateway is included
+							// and it is not a server
+
 							// Won the election!
 							cm.Dlog("wins election with %d votes", votesReceived)
 							cm.startLeader()

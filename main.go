@@ -106,19 +106,20 @@ func checkNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 			newPeersIp := getPeersIp(ip, mask)
 			newPeersIds := []int{}
 			newPeers := make(map[int]net.Addr)
+			defaultGateway := getDefaultGateway()
 			// Calculate new peers ids
 			for i := 0; i < len(newPeersIp); i++ {
-				if newPeersIp[i].String() != ip.String() {
+				if newPeersIp[i].String() != ip.String() && newPeersIp[i].String() != defaultGateway.String() {
 					id, _ := strconv.Atoi(strings.Split(newPeersIp[i].String(), ".")[3])
 					newPeersIds = append(newPeersIds, id)
 					newPeers[id] = newPeersIp[i]
 				}
 			}
 
-			fmt.Printf("Peers: %v\nNew Peers: %v\n", peers, newPeers)
 			if reflect.DeepEqual(peers, newPeers) {
 				break
 			}
+			fmt.Printf("Peers: %v\nNew Peers: %v\n", peers, newPeers)
 			
 			for id, addr := range newPeers {
 				if _, ok := peers[id]; !ok {
@@ -128,8 +129,8 @@ func checkNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 
 			for id := range peers {
 				if _, ok := newPeers[id]; !ok {
-					delete(peers, id)
 					server.DisconnectPeer(id)
+					delete(peers, id)
 				}
 			}
 			
@@ -138,8 +139,8 @@ func checkNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 				error := server.ConnectToPeer(id, addr)
 				fmt.Printf("Result: %v\n", error)
 				if error != nil {
-					delete(peers, id)
 					server.DisconnectPeer(id)
+					delete(peers, id)
 				}
 			}
 		}
@@ -182,4 +183,18 @@ func handleConnection(conn net.Conn, server *Server) {
 			}
 		}
 	}
+}
+
+func getDefaultGateway() (*net.IPAddr) {
+	infosCmd, _ := exec.Command("ip", "route").Output()
+	tmpInfos := strings.Split(string(infosCmd), "\n")
+
+	for i := 0; i < len(tmpInfos); i++ {
+		if strings.Contains(tmpInfos[i], "default") {
+			infos := strings.Split(tmpInfos[i], " ")
+			return &net.IPAddr{IP: net.ParseIP(infos[2])}
+		}
+	}
+
+	return nil
 }
