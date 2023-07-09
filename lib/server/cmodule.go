@@ -79,8 +79,15 @@ type ConsensusModule struct {
 	// loadLevel is the load level of this CM
 	loadLevel int
 
-	// stopElection is used to stop the election
-	stopElectionChan bool
+	// stopSendingAEsChan is used to stop sending AEs
+	// startSendingAEsChan is used to start sending AEs
+	stopSendingAEsChan chan interface{}
+	startSendingAEsChan chan interface{}
+	
+	// ResumeChan is used to resume the election
+	// SubmitChan is used to submit the command
+	ResumeChan chan interface{}
+	SubmitChan chan interface{}
 
 	// storage is used to persist state.
 	storage st.Storage
@@ -125,11 +132,14 @@ func NewConsensusModule(id int, peerIds []int, server *Server, storage st.Storag
 	cm.server = server
 	cm.storage = storage
 	cm.commitChan = commitChan
+	cm.ResumeChan = make(chan interface{}, 2)
+	cm.SubmitChan = make(chan interface{}, 1)
 	cm.newCommitReadyChan = make(chan struct{})
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
-	cm.stopElectionChan = true
+	cm.stopSendingAEsChan = make(chan interface{}, 1)
+	cm.startSendingAEsChan = make(chan interface{}, 1)
 	cm.loadLevel = 10
 	cm.commitIndex = -1
 	cm.lastApplied = -1
@@ -173,7 +183,6 @@ func (cm *ConsensusModule) Report() (id int, term int, isLeader bool) {
 // a different CM to submit this command to.
 func (cm *ConsensusModule) Submit(command interface{}) {
 	cm.Mu.Lock()
-	defer cm.Wg.Done()
 	cm.Dlog("Submit received: %v", command)
 	if cm.state == Leader {
 		cm.log = append(cm.log, LogEntry{Command: command, Term: cm.currentTerm})
@@ -181,9 +190,10 @@ func (cm *ConsensusModule) Submit(command interface{}) {
 		cm.Dlog("... log=%v", cm.log)
 		cm.Mu.Unlock()
 		cm.triggerAEChan <- struct{}{}
-	} else {
-		cm.Mu.Unlock()
-	}
+		} else {
+			cm.Mu.Unlock()
+		}
+	cm.SubmitChan <- struct{}{}
 }
 
 // Stop stops this CM, cleaning up its state. This method returns quickly, but
@@ -573,7 +583,7 @@ func (cm *ConsensusModule) becomeFollower(term int) {
 // Expects cm.Mu to be locked.
 func (cm *ConsensusModule) startLeader() {
 	cm.state = Leader
-	cm.Wg.Done()
+	cm.ResumeChan <- struct{}{}
 	for _, peerId := range cm.peerIds {
 		cm.nextIndex[peerId] = len(cm.log)
 		cm.matchIndex[peerId] = -1
@@ -589,31 +599,37 @@ func (cm *ConsensusModule) startLeader() {
 
 		t := time.NewTimer(heartbeatTimeout)
 		defer t.Stop()
+		doSend := true
 		for {
-			doSend := false
-			select {
-			case <-t.C:
+			select {	
+				case <-cm.stopSendingAEsChan:
+					// Stop the heartbeat loop.
+					doSend = false
+					if !t.Stop() {
+						<-t.C
+					}
+					t.Reset(heartbeatTimeout)
 				
-				// Reset timer to fire again after heartbeatTimeout.
-				t.Stop()
-				if !cm.stopElectionChan {
+				case <-cm.startSendingAEsChan:
+					// Reset timer to fire again after heartbeatTimeout.
 					doSend = true
-				}
-				t.Reset(heartbeatTimeout)
-			case _, ok := <-cm.triggerAEChan:
-				if ok {
-					doSend = true
-				} else {
-					return
-				}
-
-				// Reset timer for heartbeatTimeout.
-				if !t.Stop() {
-					<-t.C
-				}
-				t.Reset(heartbeatTimeout)
+					cm.ResumeChan <- struct{}{}
+					if !t.Stop() {
+						<-t.C
+					}
+					t.Reset(heartbeatTimeout)
+				case <-t.C:
+					// Reset timer to fire again after heartbeatTimeout.
+					t.Stop()
+					t.Reset(heartbeatTimeout)
+				case <-cm.triggerAEChan:
+					// Reset timer for heartbeatTimeout.
+					if !t.Stop() {
+						<-t.C
+					}
+					t.Reset(heartbeatTimeout)
 			}
-
+			
 			if doSend {
 				// If this isn't a leader any more, stop the heartbeat loop.
 				cm.Mu.Lock()
@@ -779,17 +795,16 @@ func intMin(a, b int) int {
 
 func (cm *ConsensusModule) Pause() {
 	cm.Mu.Lock()
-	cm.stopElectionChan = true
+	cm.stopSendingAEsChan <- struct{}{}
 	cm.Mu.Unlock()
 }
 
 func (cm *ConsensusModule) Resume() {
 	cm.Mu.Lock()
-	cm.stopElectionChan = false
 	if cm.state == Follower {
 		cm.StartElection()
 	} else {
-		cm.Wg.Done()
+		cm.startSendingAEsChan <- struct{}{}
 	}
 	cm.Mu.Unlock()
 }

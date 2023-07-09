@@ -215,11 +215,9 @@ func (s *Server) GetConsensusModule() *ConsensusModule {
 }
 
 func (s *Server) Submit(command interface{}) {
-	s.cm.Wg.Add(1)
 	s.cm.Resume()
-	s.cm.Wg.Wait()
-	s.cm.Wg.Add(1)
+	<- s.cm.ResumeChan
 	s.cm.Submit(command)
-	s.cm.Wg.Wait()
+	<- s.cm.SubmitChan
 	s.cm.Pause()
 }
