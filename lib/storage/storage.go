@@ -2,13 +2,17 @@
 // This code is in the public domain.
 package storage
 
-import "sync"
+import (
+	"encoding/json"
+	"os"
+	"sync"
+)
 
 // Storage is an interface implemented by stable storage providers.
 type Storage interface {
-	Set(key string, value []byte)
+	Set(value map[string]string)
 
-	Get(key string) ([]byte, bool)
+	Get(key string) (string, bool)
 
 	// HasData returns true iff any Sets were made on this Storage.
 	HasData() bool
@@ -17,27 +21,64 @@ type Storage interface {
 // MapStorage is a simple in-memory implementation of Storage for testing.
 type MapStorage struct {
 	mu sync.Mutex
-	m  map[string][]byte
+	m  []map[string]string
+	f  string
 }
 
 func NewMapStorage() *MapStorage {
-	m := make(map[string][]byte)
-	return &MapStorage{
+	m := make([]map[string]string, 0)
+	ms := &MapStorage{
 		m: m,
+		f: "log.txt",
 	}
+	fd, err := os.ReadFile(ms.f)
+	if err != nil {
+		panic(err)
+	}
+	stat , _ := os.Stat(ms.f)
+	if stat.Size() == 0 {
+		os.WriteFile(ms.f, []byte("[]"), 0600)
+		return ms
+	}
+
+	if err := json.Unmarshal(fd, &ms.m); err != nil {
+		panic(err)
+	}
+
+	return ms
+
 }
 
-func (ms *MapStorage) Get(key string) ([]byte, bool) {
+func (ms *MapStorage) Get(key string) (string, bool) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	v, found := ms.m[key]
+	v, found := ms.m[len(ms.m)-1][key]
 	return v, found
 }
 
-func (ms *MapStorage) Set(key string, value []byte) {
+func (ms *MapStorage) Set(value map[string]string) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	ms.m[key] = value
+	ms.m = append(ms.m, value)
+
+	fd, err := os.OpenFile(ms.f, os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer fd.Close()
+
+	if len(ms.m) > 1 {
+		fd.Seek(-2, 2)
+		fd.WriteString(",")
+	} else {
+		fd.Seek(-1, 2)
+	}
+
+	fd.Write([]byte("\n    "))
+	b, _ := json.MarshalIndent(value, "    ", "    ")
+	fd.Write(b)
+	fd.Write([]byte("\n]"))
+
 }
 
 func (ms *MapStorage) HasData() bool {
