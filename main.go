@@ -26,6 +26,7 @@ func startServer() *Server {
 	commitChannel := make(chan CommitEntry)
 	serverIp, subnetMask := getNetworkInfo()
 	serverId, _ := strconv.Atoi(strings.Split(serverIp.String(), ".")[3])
+	defaultGateway := getDefaultGateway()
 
 	peersAddrs := getPeersIp(serverIp, subnetMask)
 	peersIds := []int{}
@@ -33,7 +34,7 @@ func startServer() *Server {
 
 	// Create all Servers in this cluster, assign ids and peer ids.
 	for p := 0; p < len(peersAddrs); p++ {
-		if peersAddrs[p] != serverIp {
+		if peersAddrs[p] != serverIp && peersAddrs[p].String() != defaultGateway.String() {
 			id, _ := strconv.Atoi(strings.Split(peersAddrs[p].String(), ".")[3])
 			peers[id] = peersAddrs[p]
 			peersIds = append(peersIds, id)
@@ -41,7 +42,7 @@ func startServer() *Server {
 	}
 
 	
-	server := NewServer(serverId, peersIds, storage, ready, commitChannel)
+	server := NewServer(serverId, storage, ready, commitChannel)
 	server.Serve(serverIp)
 	// Connect all peers to each other.
 	time.Sleep(1 * time.Second)
@@ -117,28 +118,25 @@ func checkNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 			}
 
 			if reflect.DeepEqual(peers, newPeers) {
-				break
+				continue
 			}
 			fmt.Printf("Peers: %v\nNew Peers: %v\n", peers, newPeers)
 			
 			for id, addr := range newPeers {
 				if _, ok := peers[id]; !ok {
-					peers[id] = addr
+					error := server.ConnectToPeer(id, addr)
+					fmt.Printf("Result: %v\n", error)
+					if error != nil {
+						server.DisconnectPeer(id)
+						delete(peers, id)
+					} else {
+						peers[id] = addr
+					}
 				}
 			}
 
 			for id := range peers {
 				if _, ok := newPeers[id]; !ok {
-					server.DisconnectPeer(id)
-					delete(peers, id)
-				}
-			}
-			
-			
-			for id, addr := range peers {
-				error := server.ConnectToPeer(id, addr)
-				fmt.Printf("Result: %v\n", error)
-				if error != nil {
 					server.DisconnectPeer(id)
 					delete(peers, id)
 				}

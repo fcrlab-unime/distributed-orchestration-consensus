@@ -128,10 +128,10 @@ type ConsensusModule struct {
 // server. The ready channel signals the CM that all peers are connected and
 // it's safe to start its state machine. commitChan is going to be used by the
 // CM to send log entries that have been committed by the Raft cluster.
-func NewConsensusModule(id int, peerIds []int, server *Server, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *ConsensusModule {
+func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *ConsensusModule {
 	cm := new(ConsensusModule)
 	cm.id = id
-	cm.peerIds = peerIds
+	cm.peerIds = []int{}
 	cm.server = server
 	cm.storage = storage
 	cm.commitChan = commitChan
@@ -420,6 +420,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if newEntriesIndex < len(args.Entries) {
 				cm.Dlog("... inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
 				cm.log = append(cm.log[:logInsertIndex], args.Entries[newEntriesIndex:]...)
+				cm.persistToStorage()
 				cm.Dlog("... log is now: %v", cm.log)
 			}
 
@@ -432,7 +433,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.Mu.Lock()
 				//cm.stopElectionChan = true
 			}
-			cm.persistToStorage()
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
 			// ConflictIndex/ConflictTerm to help the leader bring us up to date
@@ -866,5 +866,11 @@ func (cm *ConsensusModule) DisconnectPeer(peerId int) {
 			break
 		}
 	}
+	cm.Mu.Unlock()
+}
+
+func (cm *ConsensusModule) ConnectPeer(peerId int) {
+	cm.Mu.Lock()
+	cm.peerIds = append(cm.peerIds, peerId)
 	cm.Mu.Unlock()
 }

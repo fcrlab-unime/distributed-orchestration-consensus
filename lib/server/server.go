@@ -40,10 +40,10 @@ type Server struct {
 	wg    sync.WaitGroup
 }
 
-func NewServer(serverId int, peerIds []int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
+func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
 	s := new(Server)
 	s.serverId = serverId
-	s.peerIds = peerIds
+	s.peerIds = []int{}
 	s.peerClients = make(map[int]*rpc.Client)
 	s.storage = storage
 	s.ready = ready
@@ -54,7 +54,7 @@ func NewServer(serverId int, peerIds []int, storage st.Storage, ready <-chan int
 
 func (s *Server) Serve(ip net.Addr) {
 	s.mu.Lock()
-	s.cm = NewConsensusModule(s.serverId, s.peerIds, s, s.storage, s.ready, s.commitChan)
+	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
 
 	// Create a new RPC server and register a RPCProxy that forwards all methods
 	// to n.cm
@@ -127,8 +127,11 @@ func (s *Server) ConnectToPeer(peerId int, addr net.Addr) error {
 		client, err := rpc.Dial("tcp", addr.String()+":4000")
 		if err != nil {
 			return err
+		} else {
+			s.peerClients[peerId] = client
+			s.peerIds = append(s.peerIds, peerId)
+			s.cm.ConnectPeer(peerId)
 		}
-		s.peerClients[peerId] = client
 	}
 	return nil
 }
@@ -141,6 +144,7 @@ func (s *Server) DisconnectPeer(peerId int) error {
 		err := s.peerClients[peerId].Close()
 		s.cm.DisconnectPeer(peerId)
 		s.peerClients[peerId] = nil
+		s.peerIds = append(s.peerIds[:peerId], s.peerIds[peerId+1:]...)
 		return err
 	}
 	return nil
