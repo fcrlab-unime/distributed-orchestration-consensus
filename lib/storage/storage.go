@@ -31,18 +31,13 @@ func NewMapStorage() *MapStorage {
 		m: m,
 		f: "log.txt",
 	}
-	fd, err := os.ReadFile(ms.f)
-	if err != nil {
-		panic(err)
-	}
-	stat , _ := os.Stat(ms.f)
-	if stat.Size() == 0 {
-		os.WriteFile(ms.f, []byte("[]"), 0600)
-		return ms
-	}
 
-	if err := json.Unmarshal(fd, &ms.m); err != nil {
-		panic(err)
+	jsonRead, err := os.ReadFile(ms.f)
+	if err != nil {
+		os.OpenFile(ms.f, os.O_CREATE|os.O_WRONLY, 0600)
+		os.WriteFile(ms.f, []byte("[]"), 0600)
+	} else {
+		json.Unmarshal(jsonRead, &ms.m)
 	}
 
 	return ms
