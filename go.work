@@ -1,5 +1,5 @@
 go 1.18
 
 use ./raft
-use ./lib/server
-use ./lib/storage
+use ./src/server
+use ./src/log

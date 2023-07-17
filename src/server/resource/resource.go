@@ -1,4 +1,4 @@
-package server
+package load
 
 import (
 	"fmt"

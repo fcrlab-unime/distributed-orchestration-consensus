@@ -6,13 +6,13 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/gob"
 	"fmt"
-	"strconv"
 	"log"
-	l "server/load"
+	l "server/resource"
 	st "storage"
-	"crypto/sha512"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -24,13 +24,16 @@ const DebugCM = 1
 // be applied to the client's state machine.
 type CommitEntry struct {
 	// Command is the client command being committed.
-	Command interface{}
+	Command Service
 
 	// Index is the log index at which the client command is committed.
 	Index int
 
 	// Term is the Raft term at which the client command is committed.
 	Term int
+
+	// ChosenId is the ID of the chosen client.
+	ChosenId int
 }
 
 type CMState int
@@ -58,10 +61,11 @@ func (s CMState) String() string {
 }
 
 type LogEntry struct {
-	Command interface{}
-	Term    int
-	LeaderId int
-	Index int
+	Command 	Service
+	Term    	int
+	LeaderId	int
+	Index 		int
+	ChosenId	int
 }
 
 // ConsensusModule (CM) implements a single node of Raft consensus.
@@ -94,6 +98,13 @@ type ConsensusModule struct {
 
 	// storage is used to persist state.
 	storage st.Storage
+
+	// loadLevelMap is used to store the load level of each CM
+	// usually used by the leader
+	loadLevelMap map[int]int
+
+	// chosenChan signals the CM that must execute some command
+	chosenChan chan interface{}
 
 	// commitChan is the channel where this CM is going to report committed log
 	// entries. It's passed in by the client during construction.
@@ -134,10 +145,12 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.peerIds = []int{}
 	cm.server = server
 	cm.storage = storage
+	cm.loadLevelMap = make(map[int]int)
 	cm.commitChan = commitChan
 	cm.ResumeChan = make(chan interface{}, 2)
 	cm.SubmitChan = make(chan interface{}, 1)
 	cm.newCommitReadyChan = make(chan struct{})
+	cm.chosenChan = make(chan interface{}, 1)
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
@@ -184,18 +197,19 @@ func (cm *ConsensusModule) Report() (id int, term int, isLeader bool) {
 // committed entries. It returns true iff this CM is the leader - in which case
 // the command is accepted. If false is returned, the client will have to find
 // a different CM to submit this command to.
-func (cm *ConsensusModule) Submit(command interface{}) {
+func (cm *ConsensusModule) Submit(command *Service) {
 	cm.Mu.Lock()
 	cm.Dlog("Submit received: %v", command)
 	if cm.state == Leader {
-		cm.log = append(cm.log, LogEntry{Command: command, Term: cm.currentTerm, LeaderId: cm.id, Index: len(cm.log)})
+		chosenId := cm.minLoadLevelMap()
+		cm.log = append(cm.log, LogEntry{Command: *command, Term: cm.currentTerm, LeaderId: cm.id, Index: len(cm.log), ChosenId: chosenId})
 		cm.persistToStorage()
 		cm.Dlog("... log=%v", cm.log)
 		cm.Mu.Unlock()
 		cm.triggerAEChan <- struct{}{}
-		} else {
-			cm.Mu.Unlock()
-		}
+	} else {
+		cm.Mu.Unlock()
+	}
 	cm.SubmitChan <- struct{}{}
 }
 
@@ -214,7 +228,7 @@ func (cm *ConsensusModule) Stop() {
 // It should be called during constructor, before any concurrency concerns.
 func (cm *ConsensusModule) restoreFromStorage() {
 	if termData, found := cm.storage.Get("currentTerm"); found {
-		d := gob.NewDecoder(bytes.NewBuffer([]byte(termData)))
+		d := gob.NewDecoder(bytes.NewBuffer([]byte(fmt.Sprintf("%v", termData))))
 		if err := d.Decode(&cm.currentTerm); err != nil {
 			log.Fatal(err)
 		}
@@ -222,7 +236,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 		log.Fatal("currentTerm not found in storage")
 	}
 	if votedData, found := cm.storage.Get("votedFor"); found {
-		d := gob.NewDecoder(bytes.NewBuffer([]byte(votedData)))
+		d := gob.NewDecoder(bytes.NewBuffer([]byte(fmt.Sprintf("%v", votedData))))
 		if err := d.Decode(&cm.votedFor); err != nil {
 			log.Fatal(err)
 		}
@@ -230,7 +244,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 		log.Fatal("votedFor not found in storage")
 	}
 	if logData, found := cm.storage.Get("log"); found {
-		d := gob.NewDecoder(bytes.NewBuffer([]byte(logData)))
+		d := gob.NewDecoder(bytes.NewBuffer([]byte(fmt.Sprintf("%v", logData))))
 		if err := d.Decode(&cm.log); err != nil {
 			log.Fatal(err)
 		}
@@ -262,7 +276,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 //}
 
 func (cm *ConsensusModule) persistToStorage() {
-	termData := make(map[string]string)
+	termData := make(map[string]interface{})
 	last := 0
 	sum := []byte{}
 
@@ -275,10 +289,10 @@ func (cm *ConsensusModule) persistToStorage() {
 	termData["Id"] = fmt.Sprintf("%x", last)
 	termData["Term"] = strconv.Itoa(cm.currentTerm)
 	termData["Leader"] = strconv.Itoa(cm.votedFor)
-	termData["Command"] = fmt.Sprintf("%s", cm.log[last].Command)
+	termData["Command"] = cm.log[last].Command
 	termData["Leader"] = strconv.Itoa(cm.log[last].LeaderId)
 	for _, v := range termData {
-		sum = append(sum, []byte(v)...)
+		sum = append(sum, []byte(fmt.Sprintf("%v", v))...)
 	}
 
 	termData["checksum"] = fmt.Sprintf("%x", sha512.Sum512(sum))
@@ -357,6 +371,7 @@ type AppendEntriesArgs struct {
 	PrevLogTerm  int
 	Entries      []LogEntry
 	LeaderCommit int
+	ChosenId	 int
 }
 
 type AppendEntriesReply struct {
@@ -430,7 +445,12 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
 				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
-				cm.Mu.Lock()
+				cm.Mu.Lock()	
+				fmt.Printf("ChosenId: %d\nCM Id: %d\n", args.ChosenId, cm.id)
+				if (cm.checkIfChosen(args.ChosenId)) {
+					cm.Dlog("I am the chosen one, with id %d", args.ChosenId)
+					// TODO: Add goroutine to send service request to leader 
+				}
 				//cm.stopElectionChan = true
 			}
 		} else {
@@ -458,6 +478,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 	reply.Term = cm.currentTerm
 	cm.Dlog("AppendEntries reply: %+v", *reply)
+
 	return nil
 }
 
@@ -538,13 +559,15 @@ func (cm *ConsensusModule) StartElection() {
 	cm.electionResetEvent = time.Now()
 	cm.votedFor = cm.id
 	cm.Dlog("becomes Candidate (currentTerm=%d); log=%v; loadLevel=%v", savedCurrentTerm, cm.log, cm.loadLevel)
-
+	//wg := sync.WaitGroup{}
 	votesReceived := 1
 
 	// Send RequestVote RPCs to all other servers concurrently.
 	fmt.Printf("peers: %v", cm.peerIds)
+	cm.loadLevelMap[cm.id] = cm.loadLevel
 	for _, peerId := range cm.peerIds {
-		go func(peerId int) {
+		//wg.Add(1)
+		go func(peerId int) {//, wg *sync.WaitGroup) {
 			cm.Mu.Lock()
 			savedLastLogIndex, savedLastLogTerm := cm.lastLogIndexAndTerm()
 			cm.Mu.Unlock()
@@ -561,6 +584,8 @@ func (cm *ConsensusModule) StartElection() {
 			var reply RequestVoteReply
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
 				cm.Mu.Lock()
+				cm.loadLevelMap[peerId] = reply.LoadLevel
+				//defer wg.Done()
 				defer cm.Mu.Unlock()
 				cm.Dlog("received RequestVoteReply %+v", reply)
 
@@ -576,11 +601,11 @@ func (cm *ConsensusModule) StartElection() {
 				} else if reply.Term == savedCurrentTerm {
 					if reply.VoteGranted {
 						votesReceived += 1
-						if votesReceived*2 > len(cm.server.peerIds)/*+1*/ {
+						if votesReceived*2 > len(cm.peerIds)/*+1*/ {
 							// +1 is canceled because it should be the server itself, but
 							// I must subtract 1 because the default gateway is included
 							// and it is not a server
-
+						
 							// Won the election!
 							cm.Dlog("wins election with %d votes", votesReceived)
 							cm.startLeader()
@@ -589,8 +614,14 @@ func (cm *ConsensusModule) StartElection() {
 					}
 				}
 			}
-		}(peerId)
+		}(peerId)//, &wg)
 	}
+
+	// The need of a WaitGroup is due to the fact that together with the
+	// vote request, the server sends the load level. The server with the
+	// lowest load level will be the chosen one for the deployment of the
+	// service.
+	//wg.Wait()
 
 	// Run another election timer, in case this election is not successful.
 	//go cm.runElectionTimer()
@@ -694,6 +725,10 @@ func (cm *ConsensusModule) leaderSendAEs() {
 				prevLogTerm = cm.log[prevLogIndex].Term
 			}
 			entries := cm.log[ni:]
+			chosenId := -1
+			if len(entries) > 0 {
+				chosenId = entries[0].ChosenId
+			}
 
 			args := AppendEntriesArgs{
 				Term:         savedCurrentTerm,
@@ -702,6 +737,7 @@ func (cm *ConsensusModule) leaderSendAEs() {
 				PrevLogTerm:  prevLogTerm,
 				Entries:      entries,
 				LeaderCommit: cm.commitIndex,
+				ChosenId:     chosenId,
 			}
 			cm.Mu.Unlock()
 			cm.Dlog("sending AppendEntries to %v: ni=%d, args=%+v", peerId, ni, args)
@@ -743,6 +779,10 @@ func (cm *ConsensusModule) leaderSendAEs() {
 							cm.Mu.Unlock()
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
+							if (cm.checkIfChosen(args.ChosenId)) {
+								fmt.Printf("I am the leader and I have been chosen with id %d\n", args.ChosenId)
+								cm.chosenChan <- struct{}{}
+							}
 						} else {
 							cm.Mu.Unlock()
 						}
@@ -810,6 +850,7 @@ func (cm *ConsensusModule) commitChanSender() {
 				Command: entry.Command,
 				Index:   savedLastApplied + i + 1,
 				Term:    savedTerm,
+				ChosenId: entry.ChosenId,
 			}
 		}
 	}
@@ -848,12 +889,14 @@ func (cm *ConsensusModule) monitorLoad() {
 
 		cm.Mu.Lock()
 		cm.loadLevel = load
-		if cm.loadLevel > 8 {
-			cm.Mu.Unlock()
-			cm.server.Submit(cm.id)
-		} else {
-			cm.Mu.Unlock()
-		}
+		// TODO: Sistemare per la migration
+		//if cm.loadLevel > 8 {
+		//	cm.Mu.Unlock()
+		//	cm.server.Submit(cm.id)
+		//} else {
+		//	cm.Mu.Unlock()
+		//}
+		cm.Mu.Unlock() // Temporary
 		time.Sleep(300 * time.Millisecond)	
 	}
 }
@@ -873,4 +916,26 @@ func (cm *ConsensusModule) ConnectPeer(peerId int) {
 	cm.Mu.Lock()
 	cm.peerIds = append(cm.peerIds, peerId)
 	cm.Mu.Unlock()
+}
+
+func (cm *ConsensusModule) checkIfChosen(peerId int) bool {
+	return cm.id == peerId
+}
+
+func (cm *ConsensusModule) minLoadLevelMap() int {
+	lowestPeers := make([]int, 0)
+	lastPeer := 0
+	lowestLoad := 11
+
+	for peerId, loadLevel := range cm.loadLevelMap {
+		_, ok := cm.loadLevelMap[lastPeer]
+		if !ok || loadLevel < lowestLoad {
+			lowestLoad = loadLevel
+			lowestPeers = []int{peerId}
+		} else if loadLevel == lowestLoad {
+			lowestPeers = append(lowestPeers, peerId)
+		} 
+		lastPeer = peerId
+	}
+	return lowestPeers[0]
 }

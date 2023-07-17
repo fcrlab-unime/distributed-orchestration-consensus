@@ -144,7 +144,13 @@ func (s *Server) DisconnectPeer(peerId int) error {
 		err := s.peerClients[peerId].Close()
 		s.cm.DisconnectPeer(peerId)
 		s.peerClients[peerId] = nil
-		s.peerIds = append(s.peerIds[:peerId], s.peerIds[peerId+1:]...)
+		for i, elem := range s.peerIds {
+			if elem == peerId {
+				s.peerIds = append(s.peerIds[:i], s.peerIds[i+1:]...)
+				break
+			}
+		}
+		//s.peerIds = append(s.peerIds[:peerId], s.peerIds[peerId+1:]...)
 		return err
 	}
 	return nil
@@ -218,7 +224,7 @@ func (s *Server) GetConsensusModule() *ConsensusModule {
 	return s.cm
 }
 
-func (s *Server) Submit(command interface{}) {
+func (s *Server) Submit(command *Service) {
 	s.cm.Resume()
 	<- s.cm.ResumeChan
 	s.cm.Submit(command)

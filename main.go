@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
-	. "server"
-	. "storage"
+	s "server"
+	st "storage"
 	"strconv"
 	"strings"
 	"time"
@@ -20,10 +20,10 @@ func main(){
 	for{}
 }
 
-func startServer() *Server {
+func startServer() *s.Server {
 	ready := make(chan interface{})
-	storage := NewMapStorage()
-	commitChannel := make(chan CommitEntry)
+	storage := st.NewMapStorage()
+	commitChannel := make(chan s.CommitEntry)
 	serverIp, subnetMask := getNetworkInfo()
 	serverId, _ := strconv.Atoi(strings.Split(serverIp.String(), ".")[3])
 	defaultGateway := getDefaultGateway()
@@ -40,9 +40,11 @@ func startServer() *Server {
 			peersIds = append(peersIds, id)
 		}
 	}
-
 	
-	server := NewServer(serverId, storage, ready, commitChannel)
+	
+	
+	
+	server := s.NewServer(serverId, storage, ready, commitChannel)
 	server.Serve(serverIp)
 	// Connect all peers to each other.
 	time.Sleep(1 * time.Second)
@@ -96,7 +98,7 @@ func getPeersIp(serverIp net.Addr, subnetMask string) (peersIp []net.Addr) {
 	return peersIp
 }
 
-func checkNewPeers(server *Server, peersPtr *map[int]net.Addr) {
+func checkNewPeers(server *s.Server, peersPtr *map[int]net.Addr) {
 	peers := *peersPtr
 	for {
 		select {
@@ -145,7 +147,7 @@ func checkNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 	}
 }
 
-func waitSubmit(server *Server) {
+func waitSubmit(server *s.Server) {
 	listener, err := net.Listen("tcp", ":9093")
 	if err != nil {
 		panic(err)
@@ -160,7 +162,10 @@ func waitSubmit(server *Server) {
 	}
 }
 
-func handleConnection(conn net.Conn, server *Server) {
+func handleConnection(conn net.Conn, server *s.Server) {
+	defer conn.Close()
+
+	//TODO: da modificare per ricevere comandi e creare Service
 	for {
 		buf := make([]byte, 4096) 
 		var mess string
@@ -172,12 +177,14 @@ func handleConnection(conn net.Conn, server *Server) {
 		}
 		if	n > 0 {
 			//TODO: da modificare
-			mess = strings.ReplaceAll(strings.ReplaceAll(string(buf[0:n]), "\n", ""), "\r", "")
-			buf = buf[:0]
-			command, err := strconv.Atoi(mess)
-			fmt.Printf("Received: %v, and error is %v\n", command, err)
+			//mess = strings.ReplaceAll(strings.ReplaceAll(string(buf[0:n]), "\n", ""), "\r", "")
+			mess = strings.TrimSuffix(strings.ReplaceAll(string(buf[0:n]), "\r", ""), "\n")
+			//command, err := strconv.Atoi(mess)
+			fmt.Printf("Received: %v, and error is %v\n", mess, err)
+			command := s.NewService(mess, server)
+			fmt.Printf("Received: %v, and error is %v\n", command.ServiceID, err)
 			if err == nil {
-				server.Submit(command) 
+				server.Submit(command)
 			}
 		}
 	}
