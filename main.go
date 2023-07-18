@@ -14,10 +14,7 @@ import (
 )
 
 func main(){
-	server := startServer()
-	
-	go waitSubmit(server)
-	for{}
+	waitSubmit(startServer())
 }
 
 func startServer() *s.Server {
@@ -41,9 +38,6 @@ func startServer() *s.Server {
 		}
 	}
 	
-	
-	
-	
 	server := s.NewServer(serverId, storage, ready, commitChannel)
 	server.Serve(serverIp)
 	// Connect all peers to each other.
@@ -60,7 +54,6 @@ func startServer() *s.Server {
 	close(ready)
 
 	go checkNewPeers(server, &peers)
-
 
 	return server
 }

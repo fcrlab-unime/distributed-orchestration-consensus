@@ -1,18 +1,14 @@
 package server
 
 import (
-	"fmt"
 	"crypto/sha512"
+	"fmt"
+	"os"
 	"strings"
 	"time"
 )
 
 type SType string
-
-const (
-	Docker 		SType = "Docker"
-	Kubernetes 	SType = "Kubernetes"
-)
 
 type Service struct {
 	// Unique ID of service
@@ -27,8 +23,11 @@ func NewService(command string, server *Server) *Service {
 	service := &Service{}
 	
 	serviceMap := parseService(command)
-	service.ServiceID = fmt.Sprintf("%x", sha512.Sum512([]byte(command + time.Now().String())))
-	service.Type = typeFromString(serviceMap["Type"])
+	service.ServiceID = fmt.Sprintf("%x", sha512.Sum512([]byte(serviceMap["Command"] + time.Now().String())))
+	if err := service.saveToFile(serviceMap["Command"]); err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+	service.Type = SType(serviceMap["Type"])
 
 	return service
 }
@@ -42,9 +41,8 @@ func parseService(command string) map[string]string {
 		Then, the rest of the command is the actual body of the command.
 		...
 	*/
-	splitCommand := strings.SplitN(command, "\n", 2)
-	fmt.Printf("Command: %v\n", splitCommand)
-	Type, Command := strings.ReplaceAll(splitCommand[0], "\n\n", ""), splitCommand[1]
+	splitCommand := strings.SplitN(command, "\n\n", 2)
+	Type, Command := strings.ReplaceAll(splitCommand[0], "\n", ""), splitCommand[1]
 
 	service := make(map[string]string)
 	service["Type"] = strings.Split(Type, ": ")[1]
@@ -52,13 +50,12 @@ func parseService(command string) map[string]string {
 	return service
 }
 
-func typeFromString (s string) SType {
-	switch s {
-		case "Docker":
-			return Docker
-		case "Kubernetes":
-			return Kubernetes
-		default:
-			panic("Invalid type")
+func (s *Service) saveToFile(command string) error {
+
+	if _, err := os.Stat("services"); os.IsNotExist(err) {
+		os.Mkdir("services", 0700)
 	}
+
+	return os.WriteFile("services/" + s.ServiceID[0:64], []byte(command), 0700)
+
 }
