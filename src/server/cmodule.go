@@ -10,6 +10,9 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"math/rand"
+	"net"
+	"os"
 	l "server/resource"
 	st "storage"
 	"strconv"
@@ -90,7 +93,9 @@ type ConsensusModule struct {
 	// startSendingAEsChan is used to start sending AEs
 	stopSendingAEsChan chan interface{}
 	startSendingAEsChan chan interface{}
-	
+
+	startSendingServiceChan chan interface{}
+
 	// ResumeChan is used to resume the election
 	// SubmitChan is used to submit the command
 	ResumeChan chan interface{}
@@ -156,6 +161,7 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.votedFor = -1
 	cm.stopSendingAEsChan = make(chan interface{}, 1)
 	cm.startSendingAEsChan = make(chan interface{}, 1)
+	cm.startSendingServiceChan = make(chan interface{}, 1)
 	cm.loadLevel = 10
 	cm.commitIndex = -1
 	cm.lastApplied = -1
@@ -255,25 +261,6 @@ func (cm *ConsensusModule) restoreFromStorage() {
 
 // persistToStorage saves all of CM's persistent state in cm.storage.
 // Expects cm.Mu to be locked.
-//func (cm *ConsensusModule) persistToStorage() {
-	//var termData bytes.Buffer
-	//if err := gob.NewEncoder(&termData).Encode(cm.currentTerm); err != nil {
-		//log.Fatal(err)
-	//}
-	//cm.storage.Set("currentTerm", termData.Bytes())
-
-	//var votedData bytes.Buffer
-	//if err := gob.NewEncoder(&votedData).Encode(cm.votedFor); err != nil {
-		//log.Fatal(err)
-	//}
-	//cm.storage.Set("votedFor", votedData.Bytes())
-
-	//var logData bytes.Buffer
-	//if err := gob.NewEncoder(&logData).Encode(cm.log); err != nil {
-		//log.Fatal(err)
-	//}
-	//cm.storage.Set("log", logData.Bytes())
-//}
 
 func (cm *ConsensusModule) persistToStorage() {
 	termData := make(map[string]interface{})
@@ -288,9 +275,9 @@ func (cm *ConsensusModule) persistToStorage() {
 
 	termData["Id"] = fmt.Sprintf("%x", last)
 	termData["Term"] = strconv.Itoa(cm.currentTerm)
-	termData["Leader"] = strconv.Itoa(cm.votedFor)
 	termData["Command"] = cm.log[last].Command
 	termData["Leader"] = strconv.Itoa(cm.log[last].LeaderId)
+	termData["Chosen"] = strconv.Itoa(cm.log[last].ChosenId)
 	for _, v := range termData {
 		sum = append(sum, []byte(fmt.Sprintf("%v", v))...)
 	}
@@ -298,6 +285,14 @@ func (cm *ConsensusModule) persistToStorage() {
 	termData["checksum"] = fmt.Sprintf("%x", sha512.Sum512(sum))
 
 	cm.storage.Set(termData)
+
+	if cm.checkIfChosen(cm.log[last].ChosenId) {
+		if cm.state != Leader {
+			go cm.ReceiveService(termData, GetServerIpFromId(cm.log[last].LeaderId).String())
+		} else {
+			// TODO: Inserire esecuzione da parte del leader
+		}
+	}
 
 }
 
@@ -447,11 +442,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.newCommitReadyChan <- struct{}{}
 				cm.Mu.Lock()	
 				fmt.Printf("ChosenId: %d\nCM Id: %d\n", args.ChosenId, cm.id)
-				if (cm.checkIfChosen(args.ChosenId)) {
-					cm.Dlog("I am the chosen one, with id %d", args.ChosenId)
-					// TODO: Add goroutine to send service request to leader 
-				}
-				//cm.stopElectionChan = true
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -609,6 +599,19 @@ func (cm *ConsensusModule) StartElection() {
 							// Won the election!
 							cm.Dlog("wins election with %d votes", votesReceived)
 							cm.startLeader()
+							conn, err := net.Listen("tcp", ":4001")
+							if err != nil {
+								panic(err)
+							}
+							go func() {
+								for {
+									c, err := conn.Accept()
+									if err != nil {
+										panic(err)
+									}
+									go cm.SendService(c)
+								}
+							}()
 							return
 						}
 					}
@@ -779,10 +782,6 @@ func (cm *ConsensusModule) leaderSendAEs() {
 							cm.Mu.Unlock()
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
-							if (cm.checkIfChosen(args.ChosenId)) {
-								fmt.Printf("I am the leader and I have been chosen with id %d\n", args.ChosenId)
-								cm.chosenChan <- struct{}{}
-							}
 						} else {
 							cm.Mu.Unlock()
 						}
@@ -937,5 +936,115 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 		} 
 		lastPeer = peerId
 	}
-	return lowestPeers[0]
+	return lowestPeers[rand.Intn(len(lowestPeers))]
+}
+
+func (cm *ConsensusModule) SendService(conn net.Conn) {
+
+	bufSize := 10
+
+	mess, err := cm.Receive(conn, bufSize)
+	if err != nil {
+		panic(err)
+	}
+
+	ServiceID := string(mess[:64])
+
+	if _, err := os.Stat("services/" + ServiceID); os.IsNotExist(err) {
+		panic(err)
+	}
+
+	file, err := os.ReadFile("services/" + ServiceID)
+	if err != nil {
+		panic(err)
+	}
+
+	command := string(file)
+
+	if err := cm.Send(command, conn, bufSize); err != nil {
+		panic(err)
+	}
+
+	if mess, err := cm.Receive(conn, bufSize); err != nil {
+		panic(err)
+	} else if mess != "LAST" {
+		os.WriteFile("suca", []byte(mess), 0600)
+		panic("Error in receiving END")
+	}
+	conn.Close()
+
+}
+
+func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp string) {
+
+	conn, err := net.Dial("tcp", leaderIp + ":4001")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	bufSize := 10
+	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
+		panic(err)
+	}
+
+	service := ""
+
+	mess, err := cm.Receive(conn, bufSize)
+	if err != nil {
+		panic(err)
+	} else {
+		service = mess
+	}
+
+	err = cm.Send("LAST", conn, bufSize)
+	if err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID[:64], []byte(service), 0600); err != nil {
+		panic(err)
+	}
+}
+
+func (cm *ConsensusModule) Send(mess string, conn net.Conn, bufSize int) error {
+
+	for len(mess) > bufSize {
+		buf := []byte(mess[:bufSize])
+		if _, err := conn.Write(buf); err != nil {
+			return err
+		}
+		mess = mess[bufSize:]
+	}
+
+	if len(mess) < bufSize {
+		buf := []byte(mess)
+		if _, err := conn.Write(buf); err != nil {
+			return err
+		}
+		
+	}
+	time.Sleep(500 * time.Millisecond)
+	if _, err := conn.Write([]byte("END")); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (cm *ConsensusModule) Receive(conn net.Conn, bufSize int) (string, error) {
+
+	mess := ""
+	for {
+		buf := make([]byte, bufSize)
+		n, err := conn.Read(buf)
+		if err != nil {
+			return "", err
+		}
+
+		if string(buf[:n]) == "END" { 
+			return mess, nil
+		} else {
+			mess += string(buf[:n])
+		}
+	}
 }

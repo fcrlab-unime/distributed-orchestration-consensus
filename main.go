@@ -3,9 +3,6 @@ package main
 import (
 	"fmt"
 	"net"
-	"os"
-	"os/exec"
-	"reflect"
 	s "server"
 	st "storage"
 	"strconv"
@@ -21,11 +18,11 @@ func startServer() *s.Server {
 	ready := make(chan interface{})
 	storage := st.NewMapStorage()
 	commitChannel := make(chan s.CommitEntry)
-	serverIp, subnetMask := getNetworkInfo()
-	serverId, _ := strconv.Atoi(strings.Split(serverIp.String(), ".")[3])
-	defaultGateway := getDefaultGateway()
+	serverIp, subnetMask := s.GetNetworkInfo()
+	serverId := s.GetServerIdFromIp()
+	defaultGateway := s.GetDefaultGateway()
 
-	peersAddrs := getPeersIp(serverIp, subnetMask)
+	peersAddrs := s.GetPeersIp(serverIp, subnetMask)
 	peersIds := []int{}
 	peers := make(map[int]net.Addr)
 
@@ -53,92 +50,11 @@ func startServer() *s.Server {
 	}
 	close(ready)
 
-	go checkNewPeers(server, &peers)
+	go s.CheckNewPeers(server, &peers)
 
 	return server
 }
 
-func getNetworkInfo() (ip net.Addr, subnetMask string) {
-	infosCmd, _ := exec.Command("ip", "-4", "-brief" , "address").Output()
-	tmpInfos := strings.Split(string(infosCmd), "\n")
-	infos := []string{}
-	for i := 0; i < len(tmpInfos); i++ {
-		infos = strings.Fields(tmpInfos[i])
-		if strings.Contains(infos[1], "UP"){
-			infos = strings.Split(infos[2], "/")
-			infos = []string {infos[0], infos[1]}
-			break
-		}
-	}
-	ip = &net.IPAddr{IP: net.ParseIP(infos[0])}
-	subnetMask = infos[1]
-	return ip, subnetMask
-}
-
-func getPeersIp(serverIp net.Addr, subnetMask string) (peersIp []net.Addr) {
-	if _, err := os.Stat("/tmp/ip.txt"); err == nil {
-		os.Truncate("/tmp/ip.txt", 0)
-	}
-	exec.Command("bash", "/home/raft/get_ip.sh", serverIp.String(), subnetMask).Run()
-	peersIpFile, _ := os.ReadFile("/tmp/ip.txt")
-	peersIpStr := strings.Split(string(peersIpFile), "\n")
-	for i := 0; i < len(peersIpStr); i++ {
-		if peersIpStr[i] != serverIp.String() && peersIpStr[i] != "" {
-			ip := net.ParseIP(peersIpStr[i])
-			peersIp = append(peersIp, &net.IPAddr{IP: ip})
-		}
-	}
-	return peersIp
-}
-
-func checkNewPeers(server *s.Server, peersPtr *map[int]net.Addr) {
-	peers := *peersPtr
-	for {
-		select {
-		case <-server.GetQuit():
-			return
-		case <-time.After(100 * time.Millisecond):
-			ip, mask := getNetworkInfo()
-			newPeersIp := getPeersIp(ip, mask)
-			newPeersIds := []int{}
-			newPeers := make(map[int]net.Addr)
-			defaultGateway := getDefaultGateway()
-			// Calculate new peers ids
-			for i := 0; i < len(newPeersIp); i++ {
-				if newPeersIp[i].String() != ip.String() && newPeersIp[i].String() != defaultGateway.String() {
-					id, _ := strconv.Atoi(strings.Split(newPeersIp[i].String(), ".")[3])
-					newPeersIds = append(newPeersIds, id)
-					newPeers[id] = newPeersIp[i]
-				}
-			}
-
-			if reflect.DeepEqual(peers, newPeers) {
-				continue
-			}
-			fmt.Printf("Peers: %v\nNew Peers: %v\n", peers, newPeers)
-			
-			for id, addr := range newPeers {
-				if _, ok := peers[id]; !ok {
-					error := server.ConnectToPeer(id, addr)
-					fmt.Printf("Result: %v\n", error)
-					if error != nil {
-						server.DisconnectPeer(id)
-						delete(peers, id)
-					} else {
-						peers[id] = addr
-					}
-				}
-			}
-
-			for id := range peers {
-				if _, ok := newPeers[id]; !ok {
-					server.DisconnectPeer(id)
-					delete(peers, id)
-				}
-			}
-		}
-	}
-}
 
 func waitSubmit(server *s.Server) {
 	listener, err := net.Listen("tcp", ":9093")
@@ -158,7 +74,6 @@ func waitSubmit(server *s.Server) {
 func handleConnection(conn net.Conn, server *s.Server) {
 	defer conn.Close()
 
-	//TODO: da modificare per ricevere comandi e creare Service
 	for {
 		buf := make([]byte, 4096) 
 		var mess string
@@ -170,9 +85,7 @@ func handleConnection(conn net.Conn, server *s.Server) {
 		}
 		if	n > 0 {
 			//TODO: da modificare
-			//mess = strings.ReplaceAll(strings.ReplaceAll(string(buf[0:n]), "\n", ""), "\r", "")
 			mess = strings.TrimSuffix(strings.ReplaceAll(string(buf[0:n]), "\r", ""), "\n")
-			//command, err := strconv.Atoi(mess)
 			fmt.Printf("Received: %v, and error is %v\n", mess, err)
 			command := s.NewService(mess, server)
 			fmt.Printf("Received: %v, and error is %v\n", command.ServiceID, err)
@@ -181,18 +94,4 @@ func handleConnection(conn net.Conn, server *s.Server) {
 			}
 		}
 	}
-}
-
-func getDefaultGateway() (*net.IPAddr) {
-	infosCmd, _ := exec.Command("ip", "route").Output()
-	tmpInfos := strings.Split(string(infosCmd), "\n")
-
-	for i := 0; i < len(tmpInfos); i++ {
-		if strings.Contains(tmpInfos[i], "default") {
-			infos := strings.Split(tmpInfos[i], " ")
-			return &net.IPAddr{IP: net.ParseIP(infos[2])}
-		}
-	}
-
-	return nil
 }
