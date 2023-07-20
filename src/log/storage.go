@@ -16,6 +16,9 @@ type Storage interface {
 
 	// HasData returns true iff any Sets were made on this Storage.
 	HasData() bool
+
+	// GetLog returns the log of all Sets made on this Storage.
+	GetLog() []map[string]interface{}
 }
 
 // MapStorage is a simple in-memory implementation of Storage for testing.
@@ -80,4 +83,10 @@ func (ms *MapStorage) HasData() bool {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	return len(ms.m) > 0
+}
+
+func (ms *MapStorage) GetLog() []map[string]interface{} {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	return ms.m
 }

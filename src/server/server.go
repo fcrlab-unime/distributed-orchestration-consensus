@@ -38,6 +38,10 @@ type Server struct {
 	ready <-chan interface{}
 	quit  chan interface{}
 	wg    sync.WaitGroup
+
+	fileSocket net.Listener	
+	connections map[int]bool
+
 }
 
 func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
@@ -49,6 +53,8 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.ready = ready
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
+	s.fileSocket = nil
+	s.connections = make(map[int]bool)
 	return s
 }
 

@@ -5,9 +5,7 @@
 package server
 
 import (
-	"bytes"
 	"crypto/sha512"
-	"encoding/gob"
 	"fmt"
 	"log"
 	"math/rand"
@@ -16,6 +14,7 @@ import (
 	l "server/resource"
 	st "storage"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -92,9 +91,6 @@ type ConsensusModule struct {
 	// stopSendingAEsChan is used to stop sending AEs
 	// startSendingAEsChan is used to start sending AEs
 	stopSendingAEsChan chan interface{}
-	startSendingAEsChan chan interface{}
-
-	startSendingServiceChan chan interface{}
 
 	// ResumeChan is used to resume the election
 	// SubmitChan is used to submit the command
@@ -160,8 +156,6 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.state = Follower
 	cm.votedFor = -1
 	cm.stopSendingAEsChan = make(chan interface{}, 1)
-	cm.startSendingAEsChan = make(chan interface{}, 1)
-	cm.startSendingServiceChan = make(chan interface{}, 1)
 	cm.loadLevel = 10
 	cm.commitIndex = -1
 	cm.lastApplied = -1
@@ -233,30 +227,36 @@ func (cm *ConsensusModule) Stop() {
 // restoreFromStorage restores the persistent state of this CM from storage.
 // It should be called during constructor, before any concurrency concerns.
 func (cm *ConsensusModule) restoreFromStorage() {
-	if termData, found := cm.storage.Get("currentTerm"); found {
-		d := gob.NewDecoder(bytes.NewBuffer([]byte(fmt.Sprintf("%v", termData))))
-		if err := d.Decode(&cm.currentTerm); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		log.Fatal("currentTerm not found in storage")
+	
+	Term, found := cm.storage.Get("Term")
+	if !found {
+		panic("no Term found in storage")
 	}
-	if votedData, found := cm.storage.Get("votedFor"); found {
-		d := gob.NewDecoder(bytes.NewBuffer([]byte(fmt.Sprintf("%v", votedData))))
-		if err := d.Decode(&cm.votedFor); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		log.Fatal("votedFor not found in storage")
+	cm.currentTerm, _ = strconv.Atoi(Term.(string))
+
+	VotedFor, found := cm.storage.Get("VotedFor")
+	if !found {
+		panic("no VotedFor found in storage")
 	}
-	if logData, found := cm.storage.Get("log"); found {
-		d := gob.NewDecoder(bytes.NewBuffer([]byte(fmt.Sprintf("%v", logData))))
-		if err := d.Decode(&cm.log); err != nil {
-			log.Fatal(err)
+	cm.votedFor, _ = strconv.Atoi(VotedFor.(string))
+
+	logs := cm.storage.GetLog()
+	for i, log := range logs {
+		Term, _ := strconv.Atoi(log["Term"].(string))
+		LeaderId, _ := strconv.Atoi(log["Leader"].(string))
+		ChosenId, _ := strconv.Atoi(log["Chosen"].(string))
+		Log := LogEntry{
+			Command: Service{
+				log["Command"].(map[string]interface{})["ServiceID"].(string),
+				SType(log["Command"].(map[string]interface{})["Type"].(string))},
+			Term: Term,
+			LeaderId: LeaderId,
+			Index: len(logs)-i-1,
+			ChosenId: ChosenId,
 		}
-	} else {
-		log.Fatal("log not found in storage")
+		cm.log = append(cm.log, Log)
 	}
+
 }
 
 // persistToStorage saves all of CM's persistent state in cm.storage.
@@ -278,6 +278,7 @@ func (cm *ConsensusModule) persistToStorage() {
 	termData["Command"] = cm.log[last].Command
 	termData["Leader"] = strconv.Itoa(cm.log[last].LeaderId)
 	termData["Chosen"] = strconv.Itoa(cm.log[last].ChosenId)
+	termData["VotedFor"] = strconv.Itoa(cm.votedFor)
 	for _, v := range termData {
 		sum = append(sum, []byte(fmt.Sprintf("%v", v))...)
 	}
@@ -292,6 +293,10 @@ func (cm *ConsensusModule) persistToStorage() {
 		} else {
 			// TODO: Inserire esecuzione da parte del leader
 		}
+	} else if cm.state == Leader {
+		cm.Mu.Unlock()
+		go cm.SendService()
+		cm.Mu.Lock()
 	}
 
 }
@@ -472,68 +477,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	return nil
 }
 
-// electionTimeout generates a pseudo-random election timeout duration.
-//func (cm *ConsensusModule) electionTimeout() time.Duration {
-//	// If RAFT_FORCE_MORE_REELECTION is set, stress-test by deliberately
-//	// generating a hard-coded number very often. This will create collisions
-//	// between different servers and force more re-elections.
-//	if len(os.Getenv("RAFT_FORCE_MORE_REELECTION")) > 0 && rand.Intn(3) == 0 {
-//		return time.Duration(150 * len(cm.peerIds)) * time.Millisecond
-//	} else {
-//		return time.Duration(150 * len(cm.peerIds) +rand.Intn(150)) * time.Millisecond
-//	}
-//}
-
-// runElectionTimer implements an election timer. It should be launched whenever
-// we want to start a timer towards becoming a candidate in a new election.
-//
-// This function is blocking and should be launched in a separate goroutine;
-// it's designed to work for a single (one-shot) election timer, as it exits
-// whenever the CM state changes from follower/candidate or the term changes.
-//func (cm *ConsensusModule) runElectionTimer() {
-//	timeoutDuration := cm.electionTimeout()
-//	cm.Mu.Lock()
-//	termStarted := cm.currentTerm
-//    if cm.stopElectionChan {
-//		cm.Mu.Unlock()
-//        return
-//    }
-//	cm.Mu.Unlock()
-//	//cm.Dlog("election timer started (%v), term=%d", timeoutDuration, termStarted)
-//	// This loops until either:
-//	// - we discover the election timer is no longer needed, or
-//	// - the election timer expires and this CM becomes a candidate
-//	// In a follower, this typically keeps running in the background for the
-//	// duration of the CM's lifetime.
-//	ticker := time.NewTicker(10 * time.Millisecond)
-//	defer ticker.Stop()
-//	for {
-//		<-ticker.C
-//
-//		cm.Mu.Lock()
-//		if cm.state != Candidate && cm.state != Follower {
-//			cm.Dlog("in election timer state=%s, bailing out", cm.state)
-//			cm.Mu.Unlock()
-//			return
-//		}
-//		
-//		if termStarted != cm.currentTerm {
-//			cm.Dlog("in election timer term changed from %d to %d, bailing out", termStarted, cm.currentTerm)
-//			cm.Mu.Unlock()
-//			return
-//		}
-//		
-//		// Start an election if we haven't heard from a leader or haven't voted for
-//		// someone for the duration of the timeout.
-//		if elapsed := time.Since(cm.electionResetEvent); elapsed >= timeoutDuration {
-//			cm.StartElection()
-//			cm.Mu.Unlock()
-//			return
-//		}
-//		cm.Mu.Unlock()
-//	}
-//}
-
 func runVoteDelay(loadLevel int) {
 	delay := time.Duration(100/loadLevel) * time.Millisecond
 	//fmt.Printf("delay: %d\n", time.Duration((1 / float64(loadLevel)) * float64(time.Millisecond)))
@@ -598,20 +541,7 @@ func (cm *ConsensusModule) StartElection() {
 						
 							// Won the election!
 							cm.Dlog("wins election with %d votes", votesReceived)
-							cm.startLeader()
-							conn, err := net.Listen("tcp", ":4001")
-							if err != nil {
-								panic(err)
-							}
-							go func() {
-								for {
-									c, err := conn.Accept()
-									if err != nil {
-										panic(err)
-									}
-									go cm.SendService(c)
-								}
-							}()
+							cm.startLeader()	
 							return
 						}
 					}
@@ -662,25 +592,10 @@ func (cm *ConsensusModule) startLeader() {
 
 		t := time.NewTimer(heartbeatTimeout)
 		defer t.Stop()
-		doSend := true
 		for {
 			select {	
 				case <-cm.stopSendingAEsChan:
-					// Stop the heartbeat loop.
-					doSend = false
-					if !t.Stop() {
-						<-t.C
-					}
-					t.Reset(heartbeatTimeout)
-				
-				case <-cm.startSendingAEsChan:
-					// Reset timer to fire again after heartbeatTimeout.
-					doSend = true
-					cm.ResumeChan <- struct{}{}
-					if !t.Stop() {
-						<-t.C
-					}
-					t.Reset(heartbeatTimeout)
+					return
 				case <-t.C:
 					// Reset timer to fire again after heartbeatTimeout.
 					t.Stop()
@@ -693,16 +608,13 @@ func (cm *ConsensusModule) startLeader() {
 					t.Reset(heartbeatTimeout)
 			}
 			
-			if doSend {
-				// If this isn't a leader any more, stop the heartbeat loop.
-				cm.Mu.Lock()
-				if cm.state != Leader {
-					cm.Mu.Unlock()
-					return
-				}
+			cm.Mu.Lock()
+			if cm.state != Leader {
 				cm.Mu.Unlock()
-				cm.leaderSendAEs()
+				return
 			}
+			cm.Mu.Unlock()
+			cm.leaderSendAEs()
 		}
 	}(2000 * time.Millisecond)
 }
@@ -805,6 +717,8 @@ func (cm *ConsensusModule) leaderSendAEs() {
 						cm.Dlog("AppendEntries reply from %d !success: nextIndex := %d", peerId, ni-1)
 						cm.Mu.Unlock()
 					}
+				} else {
+					cm.Mu.Unlock()
 				}
 			}
 		}(peerId)
@@ -873,7 +787,7 @@ func (cm *ConsensusModule) Resume() {
 	if cm.state == Follower {
 		cm.StartElection()
 	} else {
-		cm.startSendingAEsChan <- struct{}{}
+		cm.startLeader()
 	}
 	cm.Mu.Unlock()
 }
@@ -939,7 +853,23 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 	return lowestPeers[rand.Intn(len(lowestPeers))]
 }
 
-func (cm *ConsensusModule) SendService(conn net.Conn) {
+func (cm *ConsensusModule) SendService() {
+
+	cm.Mu.Lock()
+	if cm.server.fileSocket == nil {
+		var err error
+		cm.server.fileSocket, err = net.Listen("tcp", ":4001")
+		if err != nil {
+			panic(err)
+		}
+	}
+	connId := len(cm.server.connections)
+	cm.server.connections[connId] = true
+	cm.Mu.Unlock()
+	conn, err := cm.server.fileSocket.Accept()
+	if err != nil {
+		panic(err)
+	}
 
 	bufSize := 10
 
@@ -968,10 +898,21 @@ func (cm *ConsensusModule) SendService(conn net.Conn) {
 	if mess, err := cm.Receive(conn, bufSize); err != nil {
 		panic(err)
 	} else if mess != "LAST" {
-		os.WriteFile("suca", []byte(mess), 0600)
-		panic("Error in receiving END")
+		panic("Error in receiving LAST")
 	}
+
 	conn.Close()
+	cm.Mu.Lock()
+	if len(cm.server.connections) == 1 {
+		if cm.server.fileSocket != nil {
+			cm.server.fileSocket.Close()
+			cm.server.fileSocket = nil
+		} else {
+			panic("Error in closing file socket")
+		}
+	}
+	delete(cm.server.connections, connId)
+	cm.Mu.Unlock()
 
 }
 
@@ -981,7 +922,6 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp 
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
 
 	bufSize := 10
 	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
@@ -991,7 +931,9 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp 
 	service := ""
 
 	mess, err := cm.Receive(conn, bufSize)
-	if err != nil {
+	if err != nil && strings.Contains(err.Error(), "read: connection reset by peer") {
+		return
+	} else if err != nil {
 		panic(err)
 	} else {
 		service = mess
@@ -1004,7 +946,9 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp 
 	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID[:64], []byte(service), 0600); err != nil {
 		panic(err)
 	}
-}
+	
+	conn.Close()
+}	
 
 func (cm *ConsensusModule) Send(mess string, conn net.Conn, bufSize int) error {
 
