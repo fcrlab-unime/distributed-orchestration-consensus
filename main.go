@@ -73,22 +73,18 @@ func waitSubmit(server *s.Server) {
 
 func handleConnection(conn net.Conn, server *s.Server) {
 	defer conn.Close()
-
 	for {
 		buf := make([]byte, 4096) 
 		var mess string
 		n, err := conn.Read(buf[0:])
 	
 		if err != nil {
-			fmt.Printf("\n\nError: %v\n\n", err)
 			return
 		}
 		if	n > 0 {
 			//TODO: da modificare
 			mess = strings.TrimSuffix(strings.ReplaceAll(string(buf[0:n]), "\r", ""), "\n")
-			fmt.Printf("Received: %v, and error is %v\n", mess, err)
 			command := s.NewService(mess, server)
-			fmt.Printf("Received: %v, and error is %v\n", command.ServiceID, err)
 			if err == nil {
 				server.Submit(command)
 			}

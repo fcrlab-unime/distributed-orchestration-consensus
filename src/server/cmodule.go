@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const DebugCM = 1
+const DebugCM = 0
 
 // CommitEntry is the data reported by Raft to the commit channel. Each commit
 // entry notifies the client that consensus was reached on a command and it can
@@ -279,13 +279,15 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 
 		cm.storage.Set(termData)
 
+		ip := GetServerIpFromId(log.LeaderId)
 		if cm.checkIfChosen(log.ChosenId) {
 			if log.LeaderId != cm.id {
-				go cm.ReceiveService(termData, GetServerIpFromId(log.LeaderId).String())
+				go cm.ReceiveService(termData, ip.String())
 			} else {
 				// TODO: Inserire esecuzione da parte del leader
 			}
 		} else if log.LeaderId == cm.id {
+			fmt.Printf("Command: %s\nLeader: %s\nChosen: %s\nWho: %s\nLeaderIp: %s\n", log.Command.ServiceID, strconv.Itoa(log.LeaderId), strconv.Itoa(log.ChosenId), strconv.Itoa(cm.id), ip.String())
 			go cm.SendService()
 		}
 	}
@@ -425,7 +427,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if newEntriesIndex < len(args.Entries) {
 				cm.Dlog("... inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
 				cm.log = append(cm.log[:logInsertIndex], args.Entries[newEntriesIndex:]...)
-				go cm.persistToStorage(cm.log[logInsertIndex:])
+				cm.persistToStorage(args.Entries[newEntriesIndex:])
 				cm.Dlog("... log is now: %v", cm.log)
 			}
 
@@ -478,14 +480,12 @@ func (cm *ConsensusModule) StartElection() {
 	cm.state = Candidate
 	cm.currentTerm += 1
 	savedCurrentTerm := cm.currentTerm
-	cm.electionResetEvent = time.Now()
 	cm.votedFor = cm.id
 	cm.Dlog("becomes Candidate (currentTerm=%d); log=%v; loadLevel=%v", savedCurrentTerm, cm.log, cm.loadLevel)
 	//wg := sync.WaitGroup{}
 	votesReceived := 1
 
 	// Send RequestVote RPCs to all other servers concurrently.
-	fmt.Printf("peers: %v", cm.peerIds)
 	cm.loadLevelMap[cm.id] = cm.loadLevel
 	for _, peerId := range cm.peerIds {
 		//wg.Add(1)
@@ -773,7 +773,7 @@ func (cm *ConsensusModule) Pause() {
 
 func (cm *ConsensusModule) Resume() {
 	cm.Mu.Lock()
-	if cm.state == Follower {
+	if cm.state != Leader {
 		cm.StartElection()
 	} else {
 		cm.startLeader()
@@ -853,7 +853,7 @@ func (cm *ConsensusModule) SendService() {
 		}
 	}
 	cm.server.socketMu.Unlock()
-	conn, err := cm.server.fileSocket.Accept()
+	conn, err := cm.server.fileSocket.Accept()	
 	cm.server.socketMu.Lock()
 	keys := []int{}
 	for k := range cm.server.connections {
@@ -866,21 +866,19 @@ func (cm *ConsensusModule) SendService() {
 		connId = keys[0] + 1
 	}
 	cm.server.connections[connId] = true
-	cm.server.socketMu.Unlock()
+	cm.server.socketMu.Unlock()	
 	if err != nil {
 		//panic(err)
 	}
 
 	bufSize := 10
 
-	mess, err := cm.Receive(conn, bufSize)
-	if err != nil {
-		//panic(err)
-	}
+	mess, _ := cm.Receive(conn, bufSize)
 	
 	ServiceID := string(mess)
 	
 	if _, err := os.Stat("services/" + ServiceID); os.IsNotExist(err) {
+		fmt.Printf("Command: %s\nRichidente: %s\n", ServiceID, conn.RemoteAddr().String())
 		panic(err)
 	}
 
