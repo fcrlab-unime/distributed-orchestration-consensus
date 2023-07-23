@@ -5,13 +5,15 @@
 package server
 
 import (
-	"crypto/sha512"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"math/rand"
 	"net"
 	"os"
+	"reflect"
 	l "server/resource"
+	"sort"
 	st "storage"
 	"strconv"
 	"strings"
@@ -66,8 +68,9 @@ type LogEntry struct {
 	Command 	Service
 	Term    	int
 	LeaderId	int
-	Index 		int
+	Index 		string
 	ChosenId	int
+	VotedFor	int
 }
 
 // ConsensusModule (CM) implements a single node of Raft consensus.
@@ -202,10 +205,11 @@ func (cm *ConsensusModule) Submit(command *Service) {
 	cm.Dlog("Submit received: %v", command)
 	if cm.state == Leader {
 		chosenId := cm.minLoadLevelMap()
-		cm.log = append(cm.log, LogEntry{Command: *command, Term: cm.currentTerm, LeaderId: cm.id, Index: len(cm.log), ChosenId: chosenId})
-		cm.persistToStorage()
-		cm.Dlog("... log=%v", cm.log)
+		newLog := cm.NewLog(command, chosenId)
+		cm.log = append(cm.log, newLog)
 		cm.Mu.Unlock()
+		cm.persistToStorage([]LogEntry{newLog})
+		cm.Dlog("... log=%v", cm.log)
 		cm.triggerAEChan <- struct{}{}
 	} else {
 		cm.Mu.Unlock()
@@ -241,7 +245,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 	cm.votedFor, _ = strconv.Atoi(VotedFor.(string))
 
 	logs := cm.storage.GetLog()
-	for i, log := range logs {
+	for _, log := range logs {
 		Term, _ := strconv.Atoi(log["Term"].(string))
 		LeaderId, _ := strconv.Atoi(log["Leader"].(string))
 		ChosenId, _ := strconv.Atoi(log["Chosen"].(string))
@@ -251,7 +255,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 				SType(log["Command"].(map[string]interface{})["Type"].(string))},
 			Term: Term,
 			LeaderId: LeaderId,
-			Index: len(logs)-i-1,
+			Index: log["Id"].(string),
 			ChosenId: ChosenId,
 		}
 		cm.log = append(cm.log, Log)
@@ -262,41 +266,28 @@ func (cm *ConsensusModule) restoreFromStorage() {
 // persistToStorage saves all of CM's persistent state in cm.storage.
 // Expects cm.Mu to be locked.
 
-func (cm *ConsensusModule) persistToStorage() {
+func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 	termData := make(map[string]interface{})
-	last := 0
-	sum := []byte{}
 
-	if (len(cm.log)-1 < 0) {
-		last = 0
-	} else {
-		last = len(cm.log)-1
-	}
+	for _, log := range logs {
+		termData["Term"] = strconv.Itoa(log.Term)
+		termData["Command"] = log.Command
+		termData["Leader"] = strconv.Itoa(log.LeaderId)
+		termData["Chosen"] = strconv.Itoa(log.ChosenId)
+		termData["VotedFor"] = strconv.Itoa(log.VotedFor)
+		termData["Id"] = log.Index
 
-	termData["Id"] = fmt.Sprintf("%x", last)
-	termData["Term"] = strconv.Itoa(cm.currentTerm)
-	termData["Command"] = cm.log[last].Command
-	termData["Leader"] = strconv.Itoa(cm.log[last].LeaderId)
-	termData["Chosen"] = strconv.Itoa(cm.log[last].ChosenId)
-	termData["VotedFor"] = strconv.Itoa(cm.votedFor)
-	for _, v := range termData {
-		sum = append(sum, []byte(fmt.Sprintf("%v", v))...)
-	}
+		cm.storage.Set(termData)
 
-	termData["checksum"] = fmt.Sprintf("%x", sha512.Sum512(sum))
-
-	cm.storage.Set(termData)
-
-	if cm.checkIfChosen(cm.log[last].ChosenId) {
-		if cm.state != Leader {
-			go cm.ReceiveService(termData, GetServerIpFromId(cm.log[last].LeaderId).String())
-		} else {
-			// TODO: Inserire esecuzione da parte del leader
+		if cm.checkIfChosen(log.ChosenId) {
+			if log.LeaderId != cm.id {
+				go cm.ReceiveService(termData, GetServerIpFromId(log.LeaderId).String())
+			} else {
+				// TODO: Inserire esecuzione da parte del leader
+			}
+		} else if log.LeaderId == cm.id {
+			go cm.SendService()
 		}
-	} else if cm.state == Leader {
-		cm.Mu.Unlock()
-		go cm.SendService()
-		cm.Mu.Lock()
 	}
 
 }
@@ -402,7 +393,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 		if cm.state != Follower {
 			cm.becomeFollower(args.Term)
 		}
-		cm.electionResetEvent = time.Now()
 
 		// Does our log contain an entry at PrevLogIndex whose term matches
 		// PrevLogTerm? Note that in the extreme case of PrevLogIndex=-1 this is
@@ -435,7 +425,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if newEntriesIndex < len(args.Entries) {
 				cm.Dlog("... inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
 				cm.log = append(cm.log[:logInsertIndex], args.Entries[newEntriesIndex:]...)
-				cm.persistToStorage()
+				go cm.persistToStorage(cm.log[logInsertIndex:])
 				cm.Dlog("... log is now: %v", cm.log)
 			}
 
@@ -446,7 +436,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
 				cm.Mu.Lock()	
-				fmt.Printf("ChosenId: %d\nCM Id: %d\n", args.ChosenId, cm.id)
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -855,7 +844,7 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 
 func (cm *ConsensusModule) SendService() {
 
-	cm.Mu.Lock()
+	cm.server.socketMu.Lock()
 	if cm.server.fileSocket == nil {
 		var err error
 		cm.server.fileSocket, err = net.Listen("tcp", ":4001")
@@ -863,23 +852,34 @@ func (cm *ConsensusModule) SendService() {
 			panic(err)
 		}
 	}
-	connId := len(cm.server.connections)
-	cm.server.connections[connId] = true
-	cm.Mu.Unlock()
+	cm.server.socketMu.Unlock()
 	conn, err := cm.server.fileSocket.Accept()
+	cm.server.socketMu.Lock()
+	keys := []int{}
+	for k := range cm.server.connections {
+		keys = append(keys, k)
+	} 
+
+	sort.Sort(sort.Reverse(sort.IntSlice(keys)))
+	connId := 0
+	if len(keys) > 0 {
+		connId = keys[0] + 1
+	}
+	cm.server.connections[connId] = true
+	cm.server.socketMu.Unlock()
 	if err != nil {
-		panic(err)
+		//panic(err)
 	}
 
 	bufSize := 10
 
 	mess, err := cm.Receive(conn, bufSize)
 	if err != nil {
-		panic(err)
+		//panic(err)
 	}
-
-	ServiceID := string(mess[:64])
-
+	
+	ServiceID := string(mess)
+	
 	if _, err := os.Stat("services/" + ServiceID); os.IsNotExist(err) {
 		panic(err)
 	}
@@ -902,17 +902,13 @@ func (cm *ConsensusModule) SendService() {
 	}
 
 	conn.Close()
-	cm.Mu.Lock()
-	if len(cm.server.connections) == 1 {
-		if cm.server.fileSocket != nil {
-			cm.server.fileSocket.Close()
-			cm.server.fileSocket = nil
-		} else {
-			panic("Error in closing file socket")
-		}
+	cm.server.socketMu.Lock()
+	if len(cm.server.connections) == 0 && cm.server.fileSocket != nil {
+		cm.server.fileSocket.Close()
+		cm.server.fileSocket = nil
 	}
 	delete(cm.server.connections, connId)
-	cm.Mu.Unlock()
+	cm.server.socketMu.Unlock()
 
 }
 
@@ -922,6 +918,7 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp 
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer conn.Close()
 
 	bufSize := 10
 	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
@@ -933,6 +930,8 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp 
 	mess, err := cm.Receive(conn, bufSize)
 	if err != nil && strings.Contains(err.Error(), "read: connection reset by peer") {
 		return
+	} else if err != nil && strings.Contains(err.Error(), "EOF") {
+		return
 	} else if err != nil {
 		panic(err)
 	} else {
@@ -943,11 +942,9 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp 
 	if err != nil {
 		panic(err)
 	}
-	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID[:64], []byte(service), 0600); err != nil {
+	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID, []byte(service), 0600); err != nil {
 		panic(err)
 	}
-	
-	conn.Close()
 }	
 
 func (cm *ConsensusModule) Send(mess string, conn net.Conn, bufSize int) error {
@@ -991,4 +988,23 @@ func (cm *ConsensusModule) Receive(conn net.Conn, bufSize int) (string, error) {
 			mess += string(buf[:n])
 		}
 	}
+}
+
+func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry) {
+	newLog := LogEntry{
+		Command:	*command,
+		Term: 		cm.currentTerm,
+		LeaderId: 	cm.id,
+		ChosenId: 	chosenId,
+		VotedFor: 	cm.votedFor,
+		Index: 	  	"",
+	}
+	values := reflect.ValueOf(newLog)
+	sum := []byte{}
+	for i := 0; i < values.NumField(); i++ {
+		sum = append(sum, []byte(fmt.Sprintf("%v", values.Field(i).Interface()))...)
+	}
+	newLog.Index = fmt.Sprintf("%x", sha256.Sum256(sum))
+	return newLog
+			 
 }

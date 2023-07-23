@@ -39,8 +39,9 @@ type Server struct {
 	quit  chan interface{}
 	wg    sync.WaitGroup
 
-	fileSocket net.Listener	
+	fileSocket 	net.Listener	
 	connections map[int]bool
+	socketMu 	sync.Mutex
 
 }
 
@@ -55,6 +56,7 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.quit = make(chan interface{})
 	s.fileSocket = nil
 	s.connections = make(map[int]bool)
+	s.socketMu = sync.Mutex{}
 	return s
 }
 
@@ -149,7 +151,7 @@ func (s *Server) DisconnectPeer(peerId int) error {
 	if s.peerClients[peerId] != nil {
 		err := s.peerClients[peerId].Close()
 		s.cm.DisconnectPeer(peerId)
-		s.peerClients[peerId] = nil
+		delete(s.peerClients, peerId)
 		for i, elem := range s.peerIds {
 			if elem == peerId {
 				s.peerIds = append(s.peerIds[:i], s.peerIds[i+1:]...)
