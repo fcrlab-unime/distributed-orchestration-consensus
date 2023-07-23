@@ -1,7 +1,7 @@
 package server
 
 import (
-	"crypto/sha512"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
@@ -23,7 +23,7 @@ func NewService(command string, server *Server) *Service {
 	service := &Service{}
 	
 	serviceMap := parseService(command)
-	service.ServiceID = fmt.Sprintf("%x", sha512.Sum512([]byte(serviceMap["Command"] + time.Now().String())))
+	service.ServiceID = fmt.Sprintf("%x", sha256.Sum256([]byte(serviceMap["Command"] + time.Now().String())))
 	if err := service.saveToFile(serviceMap["Command"]); err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
@@ -56,6 +56,6 @@ func (s *Service) saveToFile(command string) error {
 		os.Mkdir("services", 0700)
 	}
 
-	return os.WriteFile("services/" + s.ServiceID[0:64], []byte(command), 0700)
+	return os.WriteFile("services/" + s.ServiceID, []byte(command), 0700)
 
 }
