@@ -3,4 +3,3 @@ go 1.18
 use ./raft
 use ./src/server
 use ./src/log
-use ./src/network

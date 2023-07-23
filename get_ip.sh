@@ -1,1 +1,1 @@
-fping -aqg -i 1 $1/$2 > /tmp/ip.txt
+nmap -np 4000 --open $1/$2 | grep "Nmap scan report for" | cut -d\  -f 5 > /tmp/ip.txt

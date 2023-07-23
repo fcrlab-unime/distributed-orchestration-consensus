@@ -38,8 +38,7 @@ func GetPeersIp(serverIp net.Addr, subnetMask string) (peersIp []net.Addr) {
 	peersIpStr := strings.Split(string(peersIpFile), "\n")
 	for i := 0; i < len(peersIpStr); i++ {
 		if peersIpStr[i] != serverIp.String() && peersIpStr[i] != "" {
-			ip := net.ParseIP(peersIpStr[i])
-			peersIp = append(peersIp, &net.IPAddr{IP: ip})
+			peersIp = append(peersIp, &net.IPAddr{IP: net.ParseIP(peersIpStr[i])})
 		}
 	}
 	return peersIp
@@ -166,7 +165,6 @@ func GetServerIpFromId(id int) (LeaderIp net.Addr) {
 			ipStr += "."
 		}
 	}
-
 	return &net.IPAddr{IP: net.ParseIP(ipStr)}
 
 }
