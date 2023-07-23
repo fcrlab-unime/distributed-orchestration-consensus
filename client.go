@@ -16,11 +16,10 @@ func main() {
 		dest = append(dest, os.Args[1:]...)
 	}	
 
-	i := 0
 	b := 0
-	for b < 3 {
-		a := 0
-		for a < 5 {
+	for b < 5 {
+		i := rand.Intn(len(dest))
+		go func() {
 			conn, err := net.Dial("tcp", dest[i] + ":9093")
 			if err != nil {
 				panic(err)
@@ -37,17 +36,9 @@ func main() {
 				panic(err)
 			}
 		
-			fmt.Printf("Sent: %v\n", message)
-
-			if len(os.Args) == 1 {
-				i = rand.Intn(3)
-			} else {
-				break
-			}
-			time.Sleep(200 * time.Millisecond)
-			a++
-		}
+			fmt.Printf("Sent: %v\nto %s", message, dest[i])
+		}()
 		b++
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 }
