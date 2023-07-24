@@ -22,6 +22,7 @@ type Server struct {
 
 	serverId int
 	peerIds  []int
+	peers	 map[int]net.Addr
 
 	cm       *ConsensusModule
 	storage  st.Storage
@@ -49,6 +50,7 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s := new(Server)
 	s.serverId = serverId
 	s.peerIds = []int{}
+	s.peers = make(map[int]net.Addr)
 	s.peerClients = make(map[int]*rpc.Client)
 	s.storage = storage
 	s.ready = ready
@@ -138,6 +140,7 @@ func (s *Server) ConnectToPeer(peerId int, addr net.Addr) error {
 		} else {
 			s.peerClients[peerId] = client
 			s.peerIds = append(s.peerIds, peerId)
+			s.peers[peerId] = addr
 			s.cm.ConnectPeer(peerId)
 		}
 	}
@@ -155,6 +158,7 @@ func (s *Server) DisconnectPeer(peerId int) error {
 		for i, elem := range s.peerIds {
 			if elem == peerId {
 				s.peerIds = append(s.peerIds[:i], s.peerIds[i+1:]...)
+				delete(s.peers, peerId)
 				break
 			}
 		}

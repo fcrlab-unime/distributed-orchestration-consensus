@@ -5,7 +5,6 @@ import (
 	"net"
 	s "server"
 	st "storage"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -19,7 +18,7 @@ func startServer() *s.Server {
 	storage := st.NewMapStorage()
 	commitChannel := make(chan s.CommitEntry)
 	serverIp, subnetMask := s.GetNetworkInfo()
-	serverId := s.GetServerIdFromIp()
+	serverId := s.GetServerIdFromIp(serverIp, subnetMask)
 	defaultGateway := s.GetDefaultGateway()
 
 	peersAddrs := s.GetPeersIp(serverIp, subnetMask)
@@ -29,7 +28,7 @@ func startServer() *s.Server {
 	// Create all Servers in this cluster, assign ids and peer ids.
 	for p := 0; p < len(peersAddrs); p++ {
 		if peersAddrs[p] != serverIp && peersAddrs[p].String() != defaultGateway.String() {
-			id, _ := strconv.Atoi(strings.Split(peersAddrs[p].String(), ".")[3])
+			id := s.GetServerIdFromIp(peersAddrs[p], subnetMask)
 			peers[id] = peersAddrs[p]
 			peersIds = append(peersIds, id)
 		}

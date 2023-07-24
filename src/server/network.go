@@ -105,8 +105,15 @@ func GetDefaultGateway() (*net.IPAddr) {
 	return nil
 }
 
-func GetServerIdFromIp() (id int) {
-	ip, netmask := GetNetworkInfo()
+func GetServerIdFromIp(ip net.Addr, netmask string) (id int) {
+
+	if ip == nil && netmask == "" {
+		ip, netmask = GetNetworkInfo()
+	} else if netmask == "" {
+		_, netmask = GetNetworkInfo()
+	} else if ip == nil {
+		ip, _ = GetNetworkInfo()
+	}
 
 	ipList := strings.Split(ip.String(), ".")
 	ipIntList := []int{}

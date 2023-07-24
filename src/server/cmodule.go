@@ -282,7 +282,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 		ip := GetServerIpFromId(log.LeaderId)
 		if cm.checkIfChosen(log.ChosenId) {
 			if log.LeaderId != cm.id {
-				go cm.ReceiveService(termData, ip.String())
+				go cm.ReceiveService(termData)
 			} else {
 				// TODO: Inserire esecuzione da parte del leader
 			}
@@ -427,7 +427,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if newEntriesIndex < len(args.Entries) {
 				cm.Dlog("... inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
 				cm.log = append(cm.log[:logInsertIndex], args.Entries[newEntriesIndex:]...)
-				cm.persistToStorage(args.Entries[newEntriesIndex:])
+				cm.persistToStorage(cm.log[logInsertIndex:])
 				cm.Dlog("... log is now: %v", cm.log)
 			}
 
@@ -853,7 +853,7 @@ func (cm *ConsensusModule) SendService() {
 		}
 	}
 	cm.server.socketMu.Unlock()
-	conn, err := cm.server.fileSocket.Accept()	
+	conn, _ := cm.server.fileSocket.Accept()	
 	cm.server.socketMu.Lock()
 	keys := []int{}
 	for k := range cm.server.connections {
@@ -867,9 +867,6 @@ func (cm *ConsensusModule) SendService() {
 	}
 	cm.server.connections[connId] = true
 	cm.server.socketMu.Unlock()	
-	if err != nil {
-		//panic(err)
-	}
 
 	bufSize := 10
 
@@ -877,15 +874,20 @@ func (cm *ConsensusModule) SendService() {
 	
 	ServiceID := string(mess)
 	
-	if _, err := os.Stat("services/" + ServiceID); os.IsNotExist(err) {
+	if _, err := os.Stat("services/" + ServiceID); ServiceID == "" || os.IsNotExist(err) {
 		fmt.Printf("Command: %s\nRichidente: %s\n", ServiceID, conn.RemoteAddr().String())
-		panic(err)
+		conn.Close()
+		cm.server.socketMu.Lock()
+		if len(cm.server.connections) == 0 && cm.server.fileSocket != nil {
+			cm.server.fileSocket.Close()
+			cm.server.fileSocket = nil
+		}
+		delete(cm.server.connections, connId)
+		cm.server.socketMu.Unlock()
+		return
 	}
 
-	file, err := os.ReadFile("services/" + ServiceID)
-	if err != nil {
-		panic(err)
-	}
+	file, _ := os.ReadFile("services/" + ServiceID)
 
 	command := string(file)
 
@@ -910,8 +912,10 @@ func (cm *ConsensusModule) SendService() {
 
 }
 
-func (cm *ConsensusModule) ReceiveService(args map[string]interface{}, leaderIp string) {
+func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 
+	leaderId, _ := strconv.Atoi(args["Leader"].(string))
+	leaderIp := cm.server.peers[leaderId].String()
 	conn, err := net.Dial("tcp", leaderIp + ":4001")
 	if err != nil {
 		log.Fatal(err)
