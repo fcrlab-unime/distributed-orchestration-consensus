@@ -70,7 +70,6 @@ type LogEntry struct {
 	LeaderId	int
 	Index 		string
 	ChosenId	int
-	VotedFor	int
 }
 
 // ConsensusModule (CM) implements a single node of Raft consensus.
@@ -238,12 +237,6 @@ func (cm *ConsensusModule) restoreFromStorage() {
 	}
 	cm.currentTerm, _ = strconv.Atoi(Term.(string))
 
-	VotedFor, found := cm.storage.Get("VotedFor")
-	if !found {
-		panic("no VotedFor found in storage")
-	}
-	cm.votedFor, _ = strconv.Atoi(VotedFor.(string))
-
 	logs := cm.storage.GetLog()
 	for _, log := range logs {
 		Term, _ := strconv.Atoi(log["Term"].(string))
@@ -274,7 +267,6 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 		termData["Command"] = log.Command
 		termData["Leader"] = strconv.Itoa(log.LeaderId)
 		termData["Chosen"] = strconv.Itoa(log.ChosenId)
-		termData["VotedFor"] = strconv.Itoa(log.VotedFor)
 		termData["Id"] = log.Index
 
 		cm.storage.Set(termData)
@@ -998,7 +990,6 @@ func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry)
 		Term: 		cm.currentTerm,
 		LeaderId: 	cm.id,
 		ChosenId: 	chosenId,
-		VotedFor: 	cm.votedFor,
 		Index: 	  	"",
 	}
 	values := reflect.ValueOf(newLog)
