@@ -1,1 +1,1 @@
-nmap -np 4000 --open $1/$2 | grep "Nmap scan report for" | cut -d\  -f 5 > /tmp/ip.txt
+nmap -np $RPC_PORT --open $1/$2 | grep "Nmap scan report for" | cut -d\  -f 5 > /tmp/ip.txt

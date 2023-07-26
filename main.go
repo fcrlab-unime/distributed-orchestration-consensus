@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"net"
+	"os"
 	s "server"
 	st "storage"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,10 +37,12 @@ func startServer() *s.Server {
 	}
 	
 	server := s.NewServer(serverId, storage, ready, commitChannel)
-	server.Serve(serverIp)
-	// Connect all peers to each other.
-	time.Sleep(1 * time.Second)
 	
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go server.Serve(serverIp, &wg, ready)
+	<-ready
+
 	for id, addr := range peers {
 		error := server.ConnectToPeer(id, addr)
 		fmt.Printf("Result: %v\n", error)
@@ -47,7 +51,10 @@ func startServer() *s.Server {
 			delete(peers, id)
 		}
 	}
+	// Connect all peers to each other.
+	time.Sleep(1 * time.Second)
 	close(ready)
+	wg.Wait()
 
 	go s.CheckNewPeers(server, &peers)
 
@@ -56,7 +63,7 @@ func startServer() *s.Server {
 
 
 func waitSubmit(server *s.Server) {
-	listener, err := net.Listen("tcp", ":9093")
+	listener, err := net.Listen("tcp", ":" + os.Getenv("GATEWAY_PORT"))
 	if err != nil {
 		panic(err)
 	}

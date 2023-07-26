@@ -3,13 +3,16 @@ version: '3.5'
 services:
   raft:
     image: raft
-    ports:
-      - "4000"
-      - "9093"
+    expose:
+      - "${RPC_PORT}"
+      - "${SERVICE_PORT}"
+      - "${GATEWAY_PORT}"
     networks:
       - raft
     deploy:
-      replicas: 3
+      replicas: 4
+    env_file:
+      - .env
 
 networks:
   raft:

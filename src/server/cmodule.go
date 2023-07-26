@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-const DebugCM = 0
+var DebugCM string = os.Getenv("DEBUG")
 
 // CommitEntry is the data reported by Raft to the commit channel. Each commit
 // entry notifies the client that consensus was reached on a command and it can
@@ -272,23 +272,24 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 		cm.storage.Set(termData)
 
 		ip := GetServerIpFromId(log.LeaderId)
-		if cm.checkIfChosen(log.ChosenId) {
-			if log.LeaderId != cm.id {
-				go cm.ReceiveService(termData)
-			} else {
-				// TODO: Inserire esecuzione da parte del leader
+		if log.Term == cm.currentTerm {
+			if cm.CheckCMId(log.ChosenId) {
+				if log.LeaderId != cm.id {
+					go cm.ReceiveService(termData)
+				} else {
+					// TODO: Inserire esecuzione da parte del leader
+				}
+			} else if log.LeaderId == cm.id {
+				fmt.Printf("Command: %s\nLeader: %s\nChosen: %s\nWho: %s\nLeaderIp: %s\n", log.Command.ServiceID, strconv.Itoa(log.LeaderId), strconv.Itoa(log.ChosenId), strconv.Itoa(cm.id), ip.String())
+				go cm.SendService()
 			}
-		} else if log.LeaderId == cm.id {
-			fmt.Printf("Command: %s\nLeader: %s\nChosen: %s\nWho: %s\nLeaderIp: %s\n", log.Command.ServiceID, strconv.Itoa(log.LeaderId), strconv.Itoa(log.ChosenId), strconv.Itoa(cm.id), ip.String())
-			go cm.SendService()
 		}
 	}
-
 }
 
 // Dlog logs a debugging message is DebugCM > 0.
 func (cm *ConsensusModule) Dlog(format string, args ...interface{}) {
-	if DebugCM > 0 {
+	if DebugCM != "0" {
 		format = fmt.Sprintf("[%d] ", cm.id) + format
 		log.Printf(format, args...)
 	}
@@ -812,7 +813,7 @@ func (cm *ConsensusModule) ConnectPeer(peerId int) {
 	cm.Mu.Unlock()
 }
 
-func (cm *ConsensusModule) checkIfChosen(peerId int) bool {
+func (cm *ConsensusModule) CheckCMId(peerId int) bool {
 	return cm.id == peerId
 }
 
@@ -839,7 +840,7 @@ func (cm *ConsensusModule) SendService() {
 	cm.server.socketMu.Lock()
 	if cm.server.fileSocket == nil {
 		var err error
-		cm.server.fileSocket, err = net.Listen("tcp", ":4001")
+		cm.server.fileSocket, err = net.Listen("tcp", ":" + os.Getenv("SERVICE_PORT"))
 		if err != nil {
 			panic(err)
 		}
@@ -883,12 +884,10 @@ func (cm *ConsensusModule) SendService() {
 
 	command := string(file)
 
-	if err := cm.Send(command, conn, bufSize); err != nil {
-		panic(err)
-	}
+	cm.Send(command, conn, bufSize)
 
 	if mess, err := cm.Receive(conn, bufSize); err != nil {
-		panic(err)
+		//panic(err)
 	} else if mess != "LAST" {
 		panic("Error in receiving LAST")
 	}
@@ -907,8 +906,15 @@ func (cm *ConsensusModule) SendService() {
 func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 
 	leaderId, _ := strconv.Atoi(args["Leader"].(string))
-	leaderIp := cm.server.peers[leaderId].String()
-	conn, err := net.Dial("tcp", leaderIp + ":4001")
+	cm.server.mu.Lock()
+	var leaderIp string
+	if leaderIpAddr, ok := cm.server.peers[leaderId]; !ok {
+		return
+	} else {
+		leaderIp = leaderIpAddr.String()
+	}
+	cm.server.mu.Unlock()
+	conn, err := net.Dial("tcp", leaderIp + ":" + os.Getenv("SERVICE_PORT"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -927,17 +933,14 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 	} else if err != nil && strings.Contains(err.Error(), "EOF") {
 		return
 	} else if err != nil {
-		panic(err)
+		//panic(err)
 	} else {
 		service = mess
 	}
 
-	err = cm.Send("LAST", conn, bufSize)
-	if err != nil {
-		panic(err)
-	}
+	cm.Send("LAST", conn, bufSize)
 	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID, []byte(service), 0600); err != nil {
-		panic(err)
+		return
 	}
 }	
 

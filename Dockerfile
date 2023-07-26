@@ -8,5 +8,11 @@ WORKDIR /home/raft
 
 RUN chmod +x ./get_ip.sh
 
-CMD [ "tail", "-f", "/dev/null"]
-#CMD [ "go", "run", "main.go" ]
+ENV RPC_PORT=4000
+ENV SERVICE_PORT=4001
+ENV GATEWAY_PORT=9093
+ENV DEBUG=0
+
+RUN go build main.go
+
+CMD [ "./main" ]

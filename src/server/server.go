@@ -62,7 +62,7 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	return s
 }
 
-func (s *Server) Serve(ip net.Addr) {
+func (s *Server) Serve(ip net.Addr, wg *sync.WaitGroup, ready chan interface{}) {
 	s.mu.Lock()
 	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
 
@@ -73,12 +73,13 @@ func (s *Server) Serve(ip net.Addr) {
 	s.rpcServer.RegisterName("ConsensusModule", s.rpcProxy)
 
 	var err error
-	s.listener, err = net.Listen("tcp", ip.String()+":4000")
+	s.listener, err = net.Listen("tcp", ip.String()+":" + os.Getenv("RPC_PORT"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("[%v] listening at %s", s.serverId, s.listener.Addr())
 	s.mu.Unlock()
+	ready <- struct{}{}
 
 	s.wg.Add(1)
 	go func() {
@@ -101,6 +102,7 @@ func (s *Server) Serve(ip net.Addr) {
 			}()
 		}
 	}()
+	wg.Done()
 }
 
 // DisconnectAll closes all the client connections to peers for this server.
@@ -134,7 +136,7 @@ func (s *Server) ConnectToPeer(peerId int, addr net.Addr) error {
 	defer s.mu.Unlock()
 	fmt.Printf("Connecting to peer %d at %s\n", peerId, addr.String())
 	if s.peerClients[peerId] == nil {
-		client, err := rpc.Dial("tcp", addr.String()+":4000")
+		client, err := rpc.Dial("tcp", addr.String()+":" + os.Getenv("RPC_PORT"))
 		if err != nil {
 			return err
 		} else {
