@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	yaml "gopkg.in/yaml.v3"
 )
 
 func main(){
@@ -81,19 +82,49 @@ func handleConnection(conn net.Conn, server *s.Server) {
 	defer conn.Close()
 	for {
 		buf := make([]byte, 4096) 
-		var mess string
 		n, err := conn.Read(buf[0:])
 	
 		if err != nil {
 			return
 		}
-		if	n > 0 {
-			//TODO: da modificare
-			mess = strings.TrimSuffix(strings.ReplaceAll(string(buf[0:n]), "\r", ""), "\n")
-			command := s.NewService(mess, server)
+
+		services, err := parseMessage(string(buf[0:n]))
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		}
+		//TODO: da modificare
+		for _, service := range services {
+			command := s.NewService(service, server)
 			if err == nil {
 				server.Submit(command)
 			}
 		}
 	}
+}
+
+func parseMessage(message string) ([]string, error) {
+	var parsedMessage map[string]interface{}
+	message = strings.TrimSuffix(strings.ReplaceAll(message, "\r", ""), "\n")
+
+	err := yaml.Unmarshal([]byte(message), &parsedMessage)
+	if err != nil {
+		return nil, err
+	}
+	servicesList := []string{}
+	for key, service := range parsedMessage["services"].(map[string]interface{}) {
+		tmpService := make(map[string]interface{})
+		for key, field := range parsedMessage {
+			if key != "services" {
+				tmpService[key] = field
+			}
+		}
+		tmpService["services"] = map[string]interface{}{key: service}
+		serviceYaml, err := yaml.Marshal(tmpService)
+		if err != nil {
+			return nil, err
+		}
+		servicesList = append(servicesList, string(serviceYaml))
+	}
+	
+	return servicesList, nil
 }

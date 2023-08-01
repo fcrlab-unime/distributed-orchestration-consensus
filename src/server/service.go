@@ -4,8 +4,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
-	"strings"
 	"time"
+	"gopkg.in/yaml.v3"
 )
 
 type SType string
@@ -41,12 +41,21 @@ func parseService(command string) map[string]string {
 		Then, the rest of the command is the actual body of the command.
 		...
 	*/
-	splitCommand := strings.SplitN(command, "\n\n", 2)
-	Type, Command := strings.ReplaceAll(splitCommand[0], "\n", ""), splitCommand[1]
+	parsedCommand := make(map[string]interface{})
+	err := yaml.Unmarshal([]byte(command), &parsedCommand)
+	if err != nil {
+		fmt.Errorf("Error: %v\n", err)
+	}
+	Type := parsedCommand["ServiceType"].(string)
+	delete(parsedCommand, "ServiceType")
+	Command, err := yaml.Marshal(parsedCommand)
+	if err != nil {
+		fmt.Errorf("Error: %v\n", err)
+	}
 
 	service := make(map[string]string)
-	service["Type"] = strings.Split(Type, ": ")[1]
-	service["Command"] = Command
+	service["Type"] = Type
+	service["Command"] = string(Command)
 	return service
 }
 
