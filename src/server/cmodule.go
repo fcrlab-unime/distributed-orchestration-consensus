@@ -70,6 +70,7 @@ type LogEntry struct {
 	LeaderId	int
 	Index 		string
 	ChosenId	int
+	Timestamp 	string
 }
 
 // ConsensusModule (CM) implements a single node of Raft consensus.
@@ -250,6 +251,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 			LeaderId: LeaderId,
 			Index: log["Id"].(string),
 			ChosenId: ChosenId,
+			Timestamp: log["Timestamp"].(string),
 		}
 		cm.log = append(cm.log, Log)
 	}
@@ -268,6 +270,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 		termData["Leader"] = strconv.Itoa(log.LeaderId)
 		termData["Chosen"] = strconv.Itoa(log.ChosenId)
 		termData["Id"] = log.Index
+		termData["Timestamp"] = log.Timestamp
 
 		cm.storage.Set(termData)
 
@@ -994,6 +997,7 @@ func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry)
 		LeaderId: 	cm.id,
 		ChosenId: 	chosenId,
 		Index: 	  	"",
+		Timestamp: 	time.Now().Local().Format("2006-01-02 15:04:05.0000"),
 	}
 	values := reflect.ValueOf(newLog)
 	sum := []byte{}
