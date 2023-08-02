@@ -1,14 +1,14 @@
 package server
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
 	"strconv"
 	"strings"
-	"time"
+	"syscall"
 )
 
 
@@ -29,62 +29,117 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 	return ip, subnetMask
 }
 
-func GetPeersIp(serverIp net.Addr, subnetMask string) (peersIp []net.Addr) {
-	if _, err := os.Stat("/tmp/ip.txt"); err == nil {
-		os.Truncate("/tmp/ip.txt", 0)
-	}
-	exec.Command("bash", "/home/raft/get_ip.sh", serverIp.String(), subnetMask).Run()
-	peersIpFile, _ := os.ReadFile("/tmp/ip.txt")
-	peersIpStr := strings.Split(string(peersIpFile), "\n")
-	for i := 0; i < len(peersIpStr); i++ {
-		if peersIpStr[i] != serverIp.String() && peersIpStr[i] != "" {
-			peersIp = append(peersIp, &net.IPAddr{IP: net.ParseIP(peersIpStr[i])})
+func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, exPeerChan *chan net.Addr, check bool) (newPeers []net.Addr) {
+	
+	if check {
+		if _, err := os.Stat("/tmp/ip.fifo"); os.IsNotExist(err) {
+			syscall.Mkfifo("/tmp/ip.fifo", 0666)
 		}
+
+		if _, err := os.Stat("/tmp/exip.fifo"); os.IsNotExist(err) {
+			syscall.Mkfifo("/tmp/exip.fifo", 0666)
+		}
+
+		
+		go func(exPeerChan *chan net.Addr) {
+			exPipe, _ := os.OpenFile("/tmp/exip.fifo", os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
+			exReader := bufio.NewReader(exPipe)
+			for {
+				line, _, err := exReader.ReadLine()
+				if err != nil {
+					continue
+				}
+				nline := strings.TrimSuffix(string(line), "\n")
+				*exPeerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
+			}
+		}(exPeerChan)
+		
+		newPipe, _ := os.OpenFile("/tmp/ip.fifo", os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
+		newReader := bufio.NewReader(newPipe)
+		exec.Command("bash", "/home/raft/get_ip.sh", "ping", serverIp.String(), subnetMask).Start()		
+		for {
+			line, _, err := newReader.ReadLine()
+			if err != nil {
+				continue
+			}
+			nline := strings.TrimSuffix(string(line), "\n")
+			fmt.Println(nline)
+			*peerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
+		}
+	} else {
+		if _, err := os.Stat("/tmp/ip.txt"); err == nil {
+			os.Truncate("/tmp/ip.txt", 0)
+		}
+		exec.Command("bash", "/home/raft/get_ip.sh", "nmap", serverIp.String(), subnetMask).Run()
+		peersIpFile, _ := os.ReadFile("/tmp/ip.txt")
+		peersIpStr := strings.Split(string(peersIpFile), "\n")
+		for i := 0; i < len(peersIpStr); i++ {
+			if peersIpStr[i] != serverIp.String() && peersIpStr[i] != "" {
+				newPeers = append(newPeers, &net.IPAddr{IP: net.ParseIP(peersIpStr[i])})
+			}
+		}
+		return newPeers
 	}
-	return peersIp
+
 }
 
 func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 	peers := *peersPtr
-	for {
-		select {
-		case <-server.GetQuit():
-			return
-		case <-time.After(100 * time.Millisecond):
-			ip, mask := GetNetworkInfo()
-			newPeersIp := GetPeersIp(ip, mask)
-			newPeers := make(map[int]net.Addr)
+	peerChan := make(chan net.Addr, 100)
+	exPeerChan := make(chan net.Addr, 100)
+	ip, mask:= GetNetworkInfo()
+	var connect int
+	go GetPeersIp(ip, mask, &peerChan, &exPeerChan, true)
+
+	go func(exPeerChan *chan net.Addr) {
+		for {
+			addr := <- *exPeerChan
 			defaultGateway := GetDefaultGateway()
-			// Calculate new peers ids
-			for i := 0; i < len(newPeersIp); i++ {
-				if newPeersIp[i].String() != ip.String() && newPeersIp[i].String() != defaultGateway.String() {
-					id, _ := strconv.Atoi(strings.Split(newPeersIp[i].String(), ".")[3])
-					newPeers[id] = newPeersIp[i]
+			tmpId := GetServerIdFromIp(addr, mask)
+
+			if addr.String() != ip.String() && addr.String() != defaultGateway.String() {
+				if peers[tmpId] != nil {
+					server.DisconnectPeer(tmpId)
+					delete(peers, tmpId)
 				}
 			}
 
-			if reflect.DeepEqual(peers, newPeers) {
-				continue
-			}
-			fmt.Printf("Peers: %v\nNew Peers: %v\n", peers, newPeers)
-			
-			for id, addr := range newPeers {
-				if _, ok := peers[id]; !ok {
-					error := server.ConnectToPeer(id, addr)
-					fmt.Printf("Result: %v\n", error)
-					if error != nil {
-						server.DisconnectPeer(id)
-						delete(peers, id)
-					} else {
-						peers[id] = addr
-					}
-				}
-			}
+		}
+	}(&exPeerChan)
 
-			for id := range peers {
-				if _, ok := newPeers[id]; !ok {
-					server.DisconnectPeer(id)
-					delete(peers, id)
+	for {
+		addr := <-peerChan
+		defaultGateway := GetDefaultGateway()
+		tmpId := 0
+		connect = 1
+		ok, err := exec.Command("bash", "/home/raft/get_ip.sh", "nc", addr.String(), os.Getenv("RPC_PORT")).Output()
+		if err != nil {
+			fmt.Printf("Error net: %v\n", err)
+			continue
+		}
+		if string(ok) == "" {
+			connect = 0
+		}
+
+		if addr.String() != ip.String() && addr.String() != defaultGateway.String() {
+			tmpId = GetServerIdFromIp(addr, mask)
+		} else {
+			continue
+		}
+	
+		if peers[tmpId] != nil {
+			if connect == 0 {
+				server.DisconnectPeer(tmpId)
+				delete(peers, tmpId)
+			}
+		} else {
+			if connect == 1 {
+				error := server.ConnectToPeer(tmpId, addr)
+				if error != nil {
+					server.DisconnectPeer(tmpId)
+					delete(peers, tmpId)
+				} else {
+					peers[tmpId] = addr
 				}
 			}
 		}

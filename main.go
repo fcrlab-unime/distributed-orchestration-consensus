@@ -24,7 +24,7 @@ func startServer() *s.Server {
 	serverId := s.GetServerIdFromIp(serverIp, subnetMask)
 	defaultGateway := s.GetDefaultGateway()
 
-	peersAddrs := s.GetPeersIp(serverIp, subnetMask)
+	peersAddrs := s.GetPeersIp(serverIp, subnetMask, nil, nil, false)
 	peersIds := []int{}
 	peers := make(map[int]net.Addr)
 
