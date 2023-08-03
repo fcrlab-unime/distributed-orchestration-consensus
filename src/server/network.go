@@ -30,7 +30,7 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 }
 
 func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, exPeerChan *chan net.Addr, check bool) (newPeers []net.Addr) {
-	
+
 	if check {
 		if _, err := os.Stat("/tmp/ip.fifo"); os.IsNotExist(err) {
 			syscall.Mkfifo("/tmp/ip.fifo", 0666)
@@ -40,7 +40,7 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 			syscall.Mkfifo("/tmp/exip.fifo", 0666)
 		}
 
-		
+
 		go func(exPeerChan *chan net.Addr) {
 			exPipe, _ := os.OpenFile("/tmp/exip.fifo", os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
 			exReader := bufio.NewReader(exPipe)
@@ -53,10 +53,10 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 				*exPeerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
 			}
 		}(exPeerChan)
-		
+
 		newPipe, _ := os.OpenFile("/tmp/ip.fifo", os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
 		newReader := bufio.NewReader(newPipe)
-		exec.Command("bash", "/home/raft/get_ip.sh", "ping", serverIp.String(), subnetMask).Start()		
+		exec.Command("bash", "/home/raft/scripts/get_ip.sh", "ping", serverIp.String(), subnetMask).Start()
 		for {
 			line, _, err := newReader.ReadLine()
 			if err != nil {
@@ -70,7 +70,7 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 		if _, err := os.Stat("/tmp/ip.txt"); err == nil {
 			os.Truncate("/tmp/ip.txt", 0)
 		}
-		exec.Command("bash", "/home/raft/get_ip.sh", "nmap", serverIp.String(), subnetMask).Run()
+		exec.Command("bash", "/home/raft/scripts/get_ip.sh", "nmap", serverIp.String(), subnetMask).Run()
 		peersIpFile, _ := os.ReadFile("/tmp/ip.txt")
 		peersIpStr := strings.Split(string(peersIpFile), "\n")
 		for i := 0; i < len(peersIpStr); i++ {
@@ -112,7 +112,7 @@ func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 		defaultGateway := GetDefaultGateway()
 		tmpId := 0
 		connect = 1
-		ok, err := exec.Command("bash", "/home/raft/get_ip.sh", "nc", addr.String(), os.Getenv("RPC_PORT")).Output()
+		ok, err := exec.Command("bash", "/home/raft/scripts/get_ip.sh", "nc", addr.String(), os.Getenv("RPC_PORT")).Output()
 		if err != nil {
 			fmt.Printf("Error net: %v\n", err)
 			continue
@@ -126,7 +126,7 @@ func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 		} else {
 			continue
 		}
-	
+
 		if peers[tmpId] != nil {
 			if connect == 0 {
 				server.DisconnectPeer(tmpId)

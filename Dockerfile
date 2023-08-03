@@ -6,7 +6,7 @@ COPY . /home/raft
 
 WORKDIR /home/raft
 
-RUN chmod +x ./get_ip.sh
+RUN chmod +x ./scripts/get_ip.sh
 
 ENV RPC_PORT=4000
 ENV SERVICE_PORT=4001
