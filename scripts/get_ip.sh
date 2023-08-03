@@ -12,6 +12,7 @@ if [[ $1 = "ping" ]]; then
             fi
         done < /tmp/oldip.txt
         mv /tmp/newip.txt /tmp/oldip.txt
+        sleep 5
     done
 elif [[ $1 = "nc" ]]; then
     nc -zvn $2 $3 2>&1 > /dev/null | grep succeeded | cut -d\  -f 3

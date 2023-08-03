@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 
@@ -47,6 +48,7 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 			for {
 				line, _, err := exReader.ReadLine()
 				if err != nil {
+					time.Sleep(1 * time.Second)
 					continue
 				}
 				nline := strings.TrimSuffix(string(line), "\n")
@@ -60,6 +62,7 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 		for {
 			line, _, err := newReader.ReadLine()
 			if err != nil {
+				time.Sleep(1 * time.Second)
 				continue
 			}
 			nline := strings.TrimSuffix(string(line), "\n")
