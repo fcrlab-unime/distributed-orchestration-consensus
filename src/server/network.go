@@ -19,7 +19,7 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 	infos := []string{}
 	for i := 0; i < len(tmpInfos); i++ {
 		infos = strings.Fields(tmpInfos[i])
-		if strings.Contains(infos[1], "UP"){
+		if strings.Contains(infos[0], os.Getenv("NET_IFACE")) && strings.Contains(infos[1], "UP") {
 			infos = strings.Split(infos[2], "/")
 			infos = []string {infos[0], infos[1]}
 			break

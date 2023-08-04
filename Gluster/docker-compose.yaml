@@ -1,0 +1,14 @@
+version: '3.5'
+
+services:
+  gluster:
+    image: gluster
+    privileged: true
+    environment:
+      - NET_IFACE=eth0
+    networks:
+      - boh
+
+networks:
+  boh:
+    external: true
