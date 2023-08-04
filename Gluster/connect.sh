@@ -25,7 +25,7 @@ if [[ $DONE == false ]]; then
     gluster volume start log
 fi
 
-RES=$(mount.glusterfs localhost:/log /log 2>&1)
+RES=$(mount.glusterfs localhost:/data /log 2>&1)
 while $( grep -q "failed" <<< "$RES" ); do
-    RES=$(mount.glusterfs localhost:/log /log 2>&1)
+    RES=$(mount.glusterfs localhost:/data /log 2>&1)
 done

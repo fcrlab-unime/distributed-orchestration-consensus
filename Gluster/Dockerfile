@@ -8,5 +8,7 @@ RUN apt install -y glusterfs-server
 
 COPY ./init.sh /bin/init.sh
 COPY ./connect.sh /bin/connect.sh
+COPY ./check_new.sh /bin/check_new.sh
+COPY ./check_ex.sh /bin/check_ex.sh
 
 CMD ["/bin/init.sh"]
