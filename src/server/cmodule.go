@@ -208,7 +208,6 @@ func (cm *ConsensusModule) Submit(command *Service) {
 		newLog := cm.NewLog(command, chosenId)
 		cm.log = append(cm.log, newLog)
 		cm.Mu.Unlock()
-		cm.persistToStorage([]LogEntry{newLog})
 		cm.Dlog("... log=%v", cm.log)
 		cm.triggerAEChan <- struct{}{}
 	} else {
@@ -277,14 +276,14 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 		ip := GetServerIpFromId(log.LeaderId)
 		if log.Term == cm.currentTerm {
 			if cm.CheckCMId(log.ChosenId) {
-				if log.LeaderId != cm.id {
+				if !cm.CheckCMId(log.LeaderId) {
 					go cm.ReceiveService(termData)
 				} else {
 					// TODO: Inserire esecuzione da parte del leader
 				}
 			} else if log.LeaderId == cm.id {
 				fmt.Printf("Command: %s\nLeader: %s\nChosen: %s\nWho: %s\nLeaderIp: %s\n", log.Command.ServiceID, strconv.Itoa(log.LeaderId), strconv.Itoa(log.ChosenId), strconv.Itoa(cm.id), ip.String())
-				go cm.SendService()
+				go cm.SendService(termData)
 			}
 		}
 	}
@@ -738,6 +737,7 @@ func (cm *ConsensusModule) commitChanSender() {
 		var entries []LogEntry
 		if cm.commitIndex > cm.lastApplied {
 			entries = cm.log[cm.lastApplied+1 : cm.commitIndex+1]
+			cm.persistToStorage(entries)
 			cm.lastApplied = cm.commitIndex
 		}
 		cm.Mu.Unlock()
@@ -795,7 +795,7 @@ func (cm *ConsensusModule) monitorLoad() {
 		//	cm.Mu.Unlock()
 		//}
 		cm.Mu.Unlock() // Temporary
-		time.Sleep(300 * time.Millisecond)	
+		time.Sleep(2 * time.Second)	
 	}
 }
 
@@ -838,7 +838,35 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 	return lowestPeers[rand.Intn(len(lowestPeers))]
 }
 
-func (cm *ConsensusModule) SendService() {
+func (cm *ConsensusModule) SendService(args map[string]interface{}) {
+	
+	chosenId, _ := strconv.Atoi(args["Chosen"].(string))
+	conn, err := net.Dial("tcp", cm.server.peers[chosenId].String() + ":" + os.Getenv("SERVICE_PORT"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
+	bufSize := 10
+
+	mess, _ := cm.Receive(conn, bufSize)
+	
+	ServiceID := string(mess)
+
+	if _, err := os.Stat("services/" + ServiceID); ServiceID == "" || os.IsNotExist(err) {
+		fmt.Printf("Command: %s\nRichidente: %s\n", ServiceID, conn.RemoteAddr().String())
+		return
+	}
+
+	file, _ := os.ReadFile("services/" + ServiceID)
+
+	command := string(file)
+
+	cm.Send(command, conn, bufSize)
+
+}
+
+func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 
 	cm.server.socketMu.Lock()
 	if cm.server.fileSocket == nil {
@@ -849,12 +877,22 @@ func (cm *ConsensusModule) SendService() {
 		}
 	}
 	cm.server.socketMu.Unlock()
-	conn, _ := cm.server.fileSocket.Accept()	
+	_, mask := GetNetworkInfo()
+	var conn net.Conn
+	for {
+		conn, _ = cm.server.fileSocket.Accept()
+		leaderId, _ := strconv.Atoi(args["Leader"].(string))
+		if GetServerIdFromIp(conn.RemoteAddr(), mask) != leaderId {
+			conn.Close()
+		} else {
+			break
+		}
+	}
 	cm.server.socketMu.Lock()
 	keys := []int{}
 	for k := range cm.server.connections {
 		keys = append(keys, k)
-	} 
+	}
 
 	sort.Sort(sort.Reverse(sort.IntSlice(keys)))
 	connId := 0
@@ -862,66 +900,7 @@ func (cm *ConsensusModule) SendService() {
 		connId = keys[0] + 1
 	}
 	cm.server.connections[connId] = true
-	cm.server.socketMu.Unlock()	
-
-	bufSize := 10
-
-	mess, _ := cm.Receive(conn, bufSize)
-	
-	ServiceID := string(mess)
-	
-	if _, err := os.Stat("services/" + ServiceID); ServiceID == "" || os.IsNotExist(err) {
-		fmt.Printf("Command: %s\nRichidente: %s\n", ServiceID, conn.RemoteAddr().String())
-		conn.Close()
-		cm.server.socketMu.Lock()
-		if len(cm.server.connections) == 0 && cm.server.fileSocket != nil {
-			cm.server.fileSocket.Close()
-			cm.server.fileSocket = nil
-		}
-		delete(cm.server.connections, connId)
-		cm.server.socketMu.Unlock()
-		return
-	}
-
-	file, _ := os.ReadFile("services/" + ServiceID)
-
-	command := string(file)
-
-	cm.Send(command, conn, bufSize)
-
-	if mess, err := cm.Receive(conn, bufSize); err != nil {
-		//panic(err)
-	} else if mess != "LAST" {
-		panic("Error in receiving LAST")
-	}
-
-	conn.Close()
-	cm.server.socketMu.Lock()
-	if len(cm.server.connections) == 0 && cm.server.fileSocket != nil {
-		cm.server.fileSocket.Close()
-		cm.server.fileSocket = nil
-	}
-	delete(cm.server.connections, connId)
 	cm.server.socketMu.Unlock()
-
-}
-
-func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
-
-	leaderId, _ := strconv.Atoi(args["Leader"].(string))
-	cm.server.mu.Lock()
-	var leaderIp string
-	if leaderIpAddr, ok := cm.server.peers[leaderId]; !ok {
-		return
-	} else {
-		leaderIp = leaderIpAddr.String()
-	}
-	cm.server.mu.Unlock()
-	conn, err := net.Dial("tcp", leaderIp + ":" + os.Getenv("SERVICE_PORT"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
 
 	bufSize := 10
 	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
@@ -941,10 +920,18 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 		service = mess
 	}
 
-	cm.Send("LAST", conn, bufSize)
 	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID, []byte(service), 0600); err != nil {
 		return
 	}
+
+	conn.Close()
+	cm.server.socketMu.Lock()
+	if len(cm.server.connections) == 0 && cm.server.fileSocket != nil {
+		cm.server.fileSocket.Close()
+		cm.server.fileSocket = nil
+	}
+	delete(cm.server.connections, connId)
+	cm.server.socketMu.Unlock()
 }	
 
 func (cm *ConsensusModule) Send(mess string, conn net.Conn, bufSize int) error {

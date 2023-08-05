@@ -3,14 +3,14 @@ version: '3.5'
 services:
   raft:
     image: raft
-    #expose:
-    ports:
-      - "${RPC_PORT}:${RPC_PORT}"
-      - "${SERVICE_PORT}:${SERVICE_PORT}"
-      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
-#    networks:
-#      - raft
-    network_mode: host
+    expose:
+    #    ports:
+      - "${RPC_PORT}" #:${RPC_PORT}"
+      - "${SERVICE_PORT}" #:${SERVICE_PORT}"
+      - "${GATEWAY_PORT}" #:${GATEWAY_PORT}"
+    networks:
+      - raft
+#    network_mode: host
     env_file:
       - .env
     privileged: true
@@ -22,15 +22,15 @@ services:
     privileged: true
     environment:
       - NET_IFACE=eth0
-#    networks:
-#      - raft
-    network_mode: host
-    volumes:
-      - gluster:/data:rw
+    networks:
+      - raft
+#    network_mode: host
+    #volumes:
+    #  - gluster:/data:rw
 
-#networks:
-#  raft:
-#    external: true
+networks:
+  raft:
+    external: true
 
 volumes:
   gluster:
