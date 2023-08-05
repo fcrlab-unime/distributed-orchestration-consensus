@@ -32,7 +32,7 @@ func NewMapStorage() *MapStorage {
 	m := make([]map[string]interface{}, 0)
 	ms := &MapStorage{
 		m: m,
-		f: "log.txt",
+		f: os.Getenv("LOG_PATH"),
 	}
 
 	jsonRead, err := os.ReadFile(ms.f)
