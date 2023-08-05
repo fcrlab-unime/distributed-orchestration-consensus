@@ -3,18 +3,17 @@ version: '3.5'
 services:
   raft:
     image: raft
-    expose:
-      - "${RPC_PORT}"
-      - "${SERVICE_PORT}"
-      - "${GATEWAY_PORT}"
-    networks:
-      - raft
-    #deploy:
-    #  replicas: 4
+    #expose:
+    ports:
+      - "${RPC_PORT}:${RPC_PORT}"
+      - "${SERVICE_PORT}:${SERVICE_PORT}"
+      - "${GATEWAY_PORT}:${GATEWAY_PORT}"
+#    networks:
+#      - raft
+    network_mode: host
     env_file:
       - .env
-    volumes:
-      - /gluster:/log:rw,shared
+    privileged: true
     depends_on:
       - gluster
 
@@ -23,29 +22,15 @@ services:
     privileged: true
     environment:
       - NET_IFACE=eth0
-    networks:
-      - raft
+#    networks:
+#      - raft
+    network_mode: host
     volumes:
-      - /gluster:/log:rw,shared
+      - gluster:/data:rw
 
-networks:
-  raft:
-    external: true
-#services:
+#networks:
 #  raft:
-#    image: raft
-#    #expose:
-#    #  - "${RPC_PORT}"
-#    #  - "${SERVICE_PORT}"
-#    #  - "${GATEWAY_PORT}"
-#    network_mode: host
-#    environment:
-#      - NET_IFACE=ens33
-#    env_file:
-#      - .env
-#
-#  gluster:
-#    image: gluster
-#    network_mode: host
-#    environment:
-#      - NET_IFACE=ens33
+#    external: true
+
+volumes:
+  gluster:

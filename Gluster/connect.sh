@@ -24,8 +24,3 @@ if [[ $DONE == false ]]; then
     gluster volume create log $IP:/data force 
     gluster volume start log
 fi
-
-RES=$(mount.glusterfs localhost:/log /log 2>&1)
-while [[ $RES != "" ]]; do
-    RES=$(mount.glusterfs localhost:/log /log 2>&1)
-done

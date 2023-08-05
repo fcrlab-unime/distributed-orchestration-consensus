@@ -9,8 +9,11 @@ services:
     networks:
       - boh
     volumes:
-      - /gluster:/log:ro,shared
+      - gluster:/data:rw
 
 networks:
   boh:
     external: true
+
+volumes:
+  gluster:
