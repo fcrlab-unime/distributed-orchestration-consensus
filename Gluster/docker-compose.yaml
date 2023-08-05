@@ -8,6 +8,8 @@ services:
       - NET_IFACE=eth0
     networks:
       - boh
+    volumes:
+      - /gluster:/log:ro,shared
 
 networks:
   boh:
