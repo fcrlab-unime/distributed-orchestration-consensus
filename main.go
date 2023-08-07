@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"golang.org/x/exp/slices"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -103,28 +104,96 @@ func handleConnection(conn net.Conn, server *s.Server) {
 }
 
 func parseMessage(message string) ([]string, error) {
-	var parsedMessage map[string]interface{}
 	message = strings.TrimSuffix(strings.ReplaceAll(message, "\r", ""), "\n")
 
-	err := yaml.Unmarshal([]byte(message), &parsedMessage)
+	var parseYml map[string]interface{}
+	err := yaml.Unmarshal([]byte(message), &parseYml)
 	if err != nil {
 		return nil, err
 	}
-	servicesList := []string{}
-	for key, service := range parsedMessage["services"].(map[string]interface{}) {
-		tmpService := make(map[string]interface{})
-		for key, field := range parsedMessage {
-			if key != "services" {
-				tmpService[key] = field
+
+	networks := []string{}
+	volumes := []string{}
+	secrets := []string{}
+	
+	if _, ok := parseYml["networks"]; ok {
+		for k := range parseYml["networks"].(map[string]interface{}) {
+		networks = append(networks, k)
+		}
+	}
+
+	if _, ok := parseYml["volumes"]; ok {
+		for k := range parseYml["volumes"].(map[string]interface{}) {
+		volumes = append(volumes, k)
+		}
+	}
+
+	if _, ok := parseYml["secrets"]; ok {
+		for k := range parseYml["secrets"].(map[string]interface{}) {
+		secrets = append(secrets, k)
+		}
+	}
+	var serviceNetworks []string
+	for _, v := range parseYml["services"].(map[string]interface{}) {
+		if _, ok := v.(map[string]interface{})["networks"]; ok {
+			for _, k := range v.(map[string]interface{})["networks"].([]interface{}) {
+				serviceNetworks = append(serviceNetworks, k.(string))
 			}
 		}
-		tmpService["services"] = map[string]interface{}{key: service}
-		serviceYaml, err := yaml.Marshal(tmpService)
+
+		if _, ok := v.(map[string]interface{})["volumes"]; ok {
+			for _, k := range v.(map[string]interface{})["volumes"].([]interface{}) {
+				volume := strings.Split(k.(string), ":")
+				if !(strings.HasPrefix(volume[0], "/") || strings.HasPrefix(volume[0], ".")) {
+					serviceNetworks = append(serviceNetworks, volume[0])
+				}
+			}
+		}
+
+		if _, ok := v.(map[string]interface{})["secrets"]; ok {
+			for _, k := range v.(map[string]interface{})["secrets"].([]interface{}) {
+				serviceNetworks = append(serviceNetworks, k.(string))
+			}
+		}
+	}
+
+	var servicesList []string
+	for k, v := range parseYml["services"].(map[string]interface{}) {
+		service := map[string]interface{}{
+			"services": map[string]interface{}{k: v},
+			"version": parseYml["version"],
+		}
+		if _, ok := v.(map[string]interface{})["networks"]; ok {
+			for _, n := range networks {
+				if slices.Contains(serviceNetworks, n) {
+					service["networks"] = map[string]interface{}{n: parseYml["networks"].(map[string]interface{})[n]}
+				}
+			}
+		}
+
+		if _, ok := v.(map[string]interface{})["volumes"]; ok {
+			for _, v := range volumes {
+				if slices.Contains(serviceNetworks, v) {
+					service["volumes"] = map[string]interface{}{v: parseYml["volumes"].(map[string]interface{})[v]}
+					fmt.Println(service)
+				}
+			}
+		}
+
+		if _, ok := v.(map[string]interface{})["secrets"]; ok {
+			for _, s := range secrets {
+				if slices.Contains(serviceNetworks, s) {
+					service["secrets"] = map[string]interface{}{s: parseYml["secrets"].(map[string]interface{})[s]}
+				}
+			}
+		}
+		yml, err := yaml.Marshal(service)
 		if err != nil {
 			return nil, err
 		}
-		servicesList = append(servicesList, string(serviceYaml))
+		servicesList = append(servicesList, "ServiceType: " + parseYml["ServiceType"].(string) + "\n\n" + string(yml))
 	}
-	
+
+
 	return servicesList, nil
 }
