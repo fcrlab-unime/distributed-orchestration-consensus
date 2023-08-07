@@ -70,11 +70,11 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 			*peerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
 		}
 	} else {
-		if _, err := os.Stat("/tmp/ip.txt"); err == nil {
-			os.Truncate("/tmp/ip.txt", 0)
+		if _, err := os.Stat("/tmp/newip.txt"); err == nil {
+			os.Truncate("/tmp/newip.txt", 0)
 		}
 		exec.Command("bash", "/home/raft/scripts/get_ip.sh", "nmap", serverIp.String(), subnetMask).Run()
-		peersIpFile, _ := os.ReadFile("/tmp/ip.txt")
+		peersIpFile, _ := os.ReadFile("/tmp/newip.txt")
 		peersIpStr := strings.Split(string(peersIpFile), "\n")
 		for i := 0; i < len(peersIpStr); i++ {
 			if peersIpStr[i] != serverIp.String() && peersIpStr[i] != "" {
