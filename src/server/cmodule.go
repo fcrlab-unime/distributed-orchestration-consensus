@@ -285,11 +285,11 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 			if isLeader && isChosen {
 				// TODO: Inserire esecuzione da parte del leader
 				fmt.Println("Esecuzione da parte del leader")
-				go exec.Exec(termData["Command"].(Service).ServiceID)
+				//go exec.Exec(termData["Command"].(Service).ServiceID)
 			} else if isLeader {
-				go cm.SendService(termData)
+				//go cm.SendService(termData)
 			} else if isChosen {
-				go cm.ReceiveService(termData)
+				//go cm.ReceiveService(termData)
 			}
 		}
 	}
@@ -351,7 +351,6 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 		reply.VoteGranted = false
 	}
 	reply.Term = cm.currentTerm
-	//cm.persistToStorage()
 	cm.Dlog("... RequestVote reply: %+v", reply)
 	return nil
 }
@@ -428,7 +427,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if newEntriesIndex < len(args.Entries) {
 				cm.Dlog("... inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
 				cm.log = append(cm.log[:logInsertIndex], args.Entries[newEntriesIndex:]...)
-				cm.persistToStorage(cm.log[logInsertIndex:])
+				//cm.persistToStorage(cm.log[logInsertIndex:])
 				cm.Dlog("... log is now: %v", cm.log)
 			}
 
@@ -682,7 +681,6 @@ func (cm *ConsensusModule) leaderSendAEs() {
 							// committed. Send new entries on the commit channel to this
 							// leader's clients, and notify followers by sending them AEs.
 							cm.Mu.Unlock()
-							cm.persistToStorage(cm.log[cm.commitIndex:])
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
 						} else {
@@ -744,6 +742,7 @@ func (cm *ConsensusModule) commitChanSender() {
 		var entries []LogEntry
 		if cm.commitIndex > cm.lastApplied {
 			entries = cm.log[cm.lastApplied+1 : cm.commitIndex+1]
+			cm.persistToStorage(entries)
 			cm.lastApplied = cm.commitIndex
 		}
 		cm.Mu.Unlock()
