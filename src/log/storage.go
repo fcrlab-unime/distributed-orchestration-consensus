@@ -37,7 +37,6 @@ func NewMapStorage() *MapStorage {
 
 	jsonRead, err := os.ReadFile(ms.f)
 	if err != nil {
-		os.OpenFile(ms.f, os.O_CREATE|os.O_WRONLY, 0600)
 		os.WriteFile(ms.f, []byte("[]"), 0600)
 	} else {
 		json.Unmarshal(jsonRead, &ms.m)
@@ -59,15 +58,16 @@ func (ms *MapStorage) Set(value map[string]interface{}) {
 	defer ms.mu.Unlock()
 	ms.m = append(ms.m, value)
 
-	fd, err := os.OpenFile(ms.f, os.O_CREATE|os.O_RDWR, 0600)
+	fd, err := os.OpenFile(ms.f, os.O_RDWR, 0600)
 	if err != nil {
 		panic(err)
 	}
 	defer fd.Close()
 
-	if len(ms.m) > 1 {
+	stat, _ := fd.Stat()
+	if stat.Size() > 2 {
 		fd.Seek(-2, 2)
-		fd.WriteString(",")
+		fd.Write([]byte(","))
 	} else {
 		fd.Seek(-1, 2)
 	}
