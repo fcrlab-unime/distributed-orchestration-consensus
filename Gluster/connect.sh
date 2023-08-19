@@ -18,7 +18,7 @@ while read line; do
             break
         fi
     fi
-done <<<$(fping -aqg -i 1 -r 0 $IP/$MASK)
+done <<<$(fping -aqg -i 1 -r 0 $IP/25)
 
 if [[ $DONE == false ]]; then
     gluster volume create log $IP:/data force 

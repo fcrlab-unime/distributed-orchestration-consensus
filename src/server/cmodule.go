@@ -681,6 +681,7 @@ func (cm *ConsensusModule) leaderSendAEs() {
 							// committed. Send new entries on the commit channel to this
 							// leader's clients, and notify followers by sending them AEs.
 							cm.Mu.Unlock()
+							cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
 						} else {
@@ -742,7 +743,6 @@ func (cm *ConsensusModule) commitChanSender() {
 		var entries []LogEntry
 		if cm.commitIndex > cm.lastApplied {
 			entries = cm.log[cm.lastApplied+1 : cm.commitIndex+1]
-			cm.persistToStorage(entries)
 			cm.lastApplied = cm.commitIndex
 		}
 		cm.Mu.Unlock()
