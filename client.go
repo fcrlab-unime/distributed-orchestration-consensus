@@ -1,49 +1,68 @@
 package main
 
 import (
-	"math/rand"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 )
 
 func main() {
 	dest := []string{}
 	if len(os.Args) == 1 {
-		dest = append(dest, "192.168.0.2", "192.168.0.3", "192.168.0.4")
+		dest = append(dest, "172.16.5.2", "172.16.5.80")//, "172.16.5.79")
 	} else {
 		dest = append(dest, os.Args[1:]...)
 	}	
 	
-	timer := time.NewTimer(60 * time.Second)
 	b := 0
+	c := 0
+	mu := sync.Mutex{}
+	i := rand.Intn(len(dest))
+	timer := time.NewTimer(10 * time.Second)
 	for b == 0 {
 		select {
 			case <-timer.C:
 				b++
-			default:
-				i := rand.Intn(len(dest))
+			case <-time.After(100 * time.Millisecond):
+				if c % 5 == 0 {
+					i = rand.Intn(len(dest))
+				}
+				mu.Lock()
+				c++
+				mu.Unlock()
 				go func() {
 					conn, err := net.Dial("tcp", dest[i] + ":9093")
 					if err != nil {
-						panic(err)
+						return
 					}
 					defer conn.Close()
-				
-					message := 
-					"ServiceType: Kubernetes\n" +
+					aaaaa := strconv.Itoa(c)
+					var message string = 
+					"ServiceType: Docker\n" +
 					"\n" +
-					"prova"
+					"version: '3.5'\n" +
+					"\n" +
+					"services:\n" +
+					"  raft"+ aaaaa +":\n" +
+					"    image: hello-world\n" +
+					"\n" +
+					"networks:\n" +
+					"  raft:\n" +
+					"    external: true\n"
 				
 					_, err = conn.Write([]byte(message))
 					if err != nil {
-						panic(err)
+						return
+						//panic(err)
 					}
-				
-					fmt.Printf("Sent: %v\nto %s", message, dest[i])
+					fmt.Printf("%s",dest[i])
 				}()
-				time.Sleep(75 * time.Millisecond)
+				time.Sleep(50 * time.Millisecond)
 		}
 	}
+	fmt.Printf("\nSent %d messages", c)
 }

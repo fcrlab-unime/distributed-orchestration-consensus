@@ -3,16 +3,11 @@ version: '3.5'
 services:
   raft:
     image: raft
-    expose:
-    #    ports:
-      - "${RPC_PORT}" #:${RPC_PORT}"
-      - "${SERVICE_PORT}" #:${SERVICE_PORT}"
-      - "${GATEWAY_PORT}" #:${GATEWAY_PORT}"
-    networks:
-      - raft
-#    network_mode: host
+    network_mode: host
     env_file:
       - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     privileged: true
     depends_on:
       - gluster
@@ -22,15 +17,9 @@ services:
     privileged: true
     environment:
       - NET_IFACE=eth0
-    networks:
-      - raft
-#    network_mode: host
-    #volumes:
-    #  - gluster:/data:rw
-
-networks:
-  raft:
-    external: true
+    network_mode: host
+    volumes:
+      - gluster:/data:rw
 
 volumes:
   gluster:
