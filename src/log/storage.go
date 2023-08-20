@@ -5,7 +5,9 @@ package storage
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"sync"
+	"time"
 )
 
 // Storage is an interface implemented by stable storage providers.
@@ -18,18 +20,18 @@ type Storage interface {
 	HasData() bool
 
 	// GetLog returns the log of all Sets made on this Storage.
-	GetLog() []map[string]interface{}
+	GetLog() map[string]map[string]interface{}
 }
 
 // MapStorage is a simple in-memory implementation of Storage for testing.
 type MapStorage struct {
 	mu sync.Mutex
-	m  []map[string]interface{}
+	m  map[string]map[string]interface{}
 	f  string
 }
 
 func NewMapStorage() *MapStorage {
-	m := make([]map[string]interface{}, 0)
+	m := make(map[string]map[string]interface{})
 	ms := &MapStorage{
 		m: m,
 		f: os.Getenv("LOG_PATH"),
@@ -56,17 +58,29 @@ func NewMapStorage() *MapStorage {
 func (ms *MapStorage) Get(key string) (interface{}, bool) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	v, found := ms.m[len(ms.m)-1][key]
+	times := []time.Time{}
+	for _, v := range ms.m {
+		time, _ := time.Parse("2006-01-02 15:04:05.0000", v["Time"].(string))
+		times = append(times, time)
+	}
+	sort.Slice(times, func(i, j int) bool {
+		return times[i].Before(times[j])
+	})
+	v, found := ms.m[times[len(times)-1].String()][key]
 	return v, found
 }
 
 func (ms *MapStorage) Set(value map[string]interface{}, toWrite bool) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	ms.m = append(ms.m, value)
+	id := value["Id"].(string)
+	delete(value, "Id")
 
-	if toWrite {
-		ms.WriteLog()
+	if ms.m[id] == nil {
+		ms.m[id] = value
+		if toWrite {
+			ms.WriteLog()
+		}
 	}
 
 }
@@ -82,7 +96,7 @@ func (ms *MapStorage) HasData() bool {
 	return len(ms.m) > 0
 }
 
-func (ms *MapStorage) GetLog() []map[string]interface{} {
+func (ms *MapStorage) GetLog() map[string]map[string]interface{} {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	return ms.m

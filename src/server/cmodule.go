@@ -426,7 +426,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if newEntriesIndex < len(args.Entries) {
 				cm.Dlog("... inserting entries %v from index %d", args.Entries[newEntriesIndex:], logInsertIndex)
 				cm.log = append(cm.log[:logInsertIndex], args.Entries[newEntriesIndex:]...)
-				//cm.persistToStorage(cm.log[logInsertIndex:])
+				cm.persistToStorage(cm.log[logInsertIndex:])
 				cm.Dlog("... log is now: %v", cm.log)
 			}
 
