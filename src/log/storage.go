@@ -10,7 +10,7 @@ import (
 
 // Storage is an interface implemented by stable storage providers.
 type Storage interface {
-	Set(value map[string]interface{})
+	Set(value map[string]interface{}, toWrite bool)
 
 	Get(key string) (interface{}, bool)
 
@@ -33,11 +33,18 @@ func NewMapStorage() *MapStorage {
 	ms := &MapStorage{
 		m: m,
 		f: os.Getenv("LOG_PATH"),
+		mu: sync.Mutex{},
 	}
 
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	jsonRead, err := os.ReadFile(ms.f)
+
 	if err != nil {
-		os.WriteFile(ms.f, []byte("[]"), 0600)
+		fd, _ := os.Create(ms.f)
+		defer fd.Close()
+		jsonWrite, _ := json.MarshalIndent(ms.m, "", "  ")
+		fd.Write(jsonWrite)
 	} else {
 		json.Unmarshal(jsonRead, &ms.m)
 	}
@@ -53,30 +60,20 @@ func (ms *MapStorage) Get(key string) (interface{}, bool) {
 	return v, found
 }
 
-func (ms *MapStorage) Set(value map[string]interface{}) {
+func (ms *MapStorage) Set(value map[string]interface{}, toWrite bool) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	ms.m = append(ms.m, value)
 
-	fd, err := os.OpenFile(ms.f, os.O_RDWR, 0600)
-	if err != nil {
-		panic(err)
-	}
-	defer fd.Close()
-
-	stat, _ := fd.Stat()
-	if stat.Size() > 2 {
-		fd.Seek(-2, 2)
-		fd.Write([]byte(","))
-	} else {
-		fd.Seek(-1, 2)
+	if toWrite {
+		ms.WriteLog()
 	}
 
-	fd.Write([]byte("\n    "))
-	b, _ := json.MarshalIndent(value, "    ", "    ")
-	fd.Write(b)
-	fd.Write([]byte("\n]"))
+}
 
+func (ms *MapStorage) WriteLog() {
+	jsonWrite, _ := json.MarshalIndent(ms.m, "", "  ")
+	os.WriteFile(ms.f, jsonWrite, 0600)
 }
 
 func (ms *MapStorage) HasData() bool {

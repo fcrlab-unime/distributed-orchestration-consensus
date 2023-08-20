@@ -275,9 +275,8 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 		termData["Id"] = log.Index
 		termData["Timestamp"] = log.Timestamp
 
-		if cm.CheckCMId(log.LeaderId) {
-			cm.storage.Set(termData)
-		}
+		cm.storage.Set(termData, cm.CheckCMId(log.LeaderId))
+
 		if log.Term >= cm.currentTerm {
 			leaderId := log.LeaderId
 			chosenId := log.ChosenId
