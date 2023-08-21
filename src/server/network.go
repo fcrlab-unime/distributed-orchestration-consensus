@@ -67,7 +67,9 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 				continue
 			}
 			nline := strings.TrimSuffix(string(line), "\n")
-			fmt.Println(nline)
+			if os.Getenv("DEBUG") == "1" {
+				fmt.Println(nline)
+			}
 			*peerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
 		}
 	} else {
