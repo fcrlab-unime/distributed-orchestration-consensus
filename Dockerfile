@@ -14,7 +14,6 @@ RUN curl -SL https://github.com/docker/compose/releases/download/v2.20.2/docker-
 COPY . /home/raft
 
 WORKDIR /home/raft
-RUN mkdir -p /home/raft/prova
 ENV RPC_PORT=4000
 ENV SERVICE_PORT=4001
 ENV GATEWAY_PORT=9093

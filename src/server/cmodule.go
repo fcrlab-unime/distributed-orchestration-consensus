@@ -14,7 +14,6 @@ import (
 	"os"
 	"reflect"
 	l "server/resource"
-	"strings"
 
 	//"sort"
 	st "storage"
@@ -284,11 +283,15 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 			if isLeader && isChosen {
 				// TODO: Inserire esecuzione da parte del leader
 				fmt.Println("Esecuzione da parte del leader")
-				//go exec.Exec(termData["Command"].(Service).ServiceID)
+				go exec.Exec(termData["Command"].(Service).ServiceID)
 			} else if isLeader {
-				//go cm.SendService(termData)
+				conn, err := cm.server.fileSocket.Accept()
+				if err != nil {
+					fmt.Printf("Error: %v\n", err)
+				}
+				go cm.SendService(conn, termData)
 			} else if isChosen {
-				//go cm.ReceiveService(termData)
+				go cm.ReceiveService(termData)
 			}
 		}
 	}
@@ -556,8 +559,6 @@ func (cm *ConsensusModule) becomeFollower(term int) {
 	cm.state = Follower
 	cm.currentTerm = term
 	cm.votedFor = -1
-	//cm.electionResetEvent = time.Now()
-	//go cm.runElectionTimer()
 }
 
 // startLeader switches cm into a leader state and begins process of heartbeats.
@@ -842,142 +843,30 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 	return lowestPeers[rand.Intn(len(lowestPeers))]
 }
 
-//func (cm *ConsensusModule) SendService(args map[string]interface{}) {
-//	
-//	chosenId, _ := strconv.Atoi(args["Chosen"].(string))
-//	//leaderId, _ := strconv.Atoi(args["Leader"].(string))
-//	cm.server.mu.Lock()
-//	//fmt.Printf("args: %v\npeers: %v\nLeader: %v\nChosen: %v\nisLeader:%t\nisChosen:%t\n", args, cm.server.peers, leaderId, chosenId, leaderId == cm.id, chosenId == cm.id)
-//	chosenIp := cm.server.peers[chosenId].String()
-//	cm.server.mu.Unlock()
-//	conn, err := net.DialTimeout("tcp", chosenIp + ":" + os.Getenv("SERVICE_PORT"), 10 * time.Second)
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//	defer conn.Close()
-//
-//	bufSize := 10
-//
-//	ServiceID, _ := cm.Receive(conn, bufSize)
-//	
-//	if _, err := os.Stat("services/" + ServiceID); ServiceID == "" || os.IsNotExist(err) {
-//		//fmt.Printf("Command: %s\nRichidente: %s\n", ServiceID, conn.RemoteAddr().String())
-//		return
-//	}
-//
-//	file, _ := os.ReadFile("services/" + ServiceID)
-//	fmt.Printf("Sent %s to %s\n", ServiceID, args["Chosen"].(string))
-//	command := string(file)
-//
-//	cm.Send(command, conn, bufSize)
-//
-//}
-//
-//func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
-//
-//	//if cm.server.fileSocket == nil {
-//		//	var err error
-//		//	cm.server.fileSocket, err = net.Listen("tcp", ":" + os.Getenv("SERVICE_PORT"))
-//	//	if err != nil {
-//	//		panic(err)
-//	//	}
-//	//}
-//	var leaderId int
-//	leaderId, _ = strconv.Atoi(args["Leader"].(string))
-//	conn, err := cm.server.fileSocket.Accept()
-//	if err != nil {
-//		panic(err)
-//	}
-//	defer conn.Close()
-//	cm.server.socketMu.Lock()
-//	fmt.Printf("Connesso a %s e il leader è %d\n", conn.RemoteAddr().String(), leaderId)
-//	keys := []int{}
-//	for k := range cm.server.connections {
-//		keys = append(keys, k)
-//	}
-//
-//	sort.Sort(sort.Reverse(sort.IntSlice(keys)))
-//	connId := 0
-//	if len(keys) > 0 {
-//		connId = keys[0] + 1
-//	}
-//	cm.server.connections[connId] = true
-//	cm.server.socketMu.Unlock()
-//
-//	bufSize := 10
-//	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
-//		panic(err)
-//	}
-//
-//	service := ""
-//
-//	mess, err := cm.Receive(conn, bufSize)
-//	fmt.Printf("Errore: %v\n", err)
-//	if err != nil && strings.Contains(err.Error(), "read: connection reset by peer") {
-//		return
-//	} else if err != nil && strings.Contains(err.Error(), "EOF") {
-//		return
-//	} else if err != nil {
-//		//panic(err)
-//	} else {
-//		service = mess
-//		if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID, []byte(service), 0600); err != nil {
-//			return
-//		}
-//		fmt.Printf("Ricevuto %s da %s\n", args["Command"].(Service).ServiceID, args["Leader"].(string))
-//	}
-//
-//	conn.Close()
-//	cm.server.socketMu.Lock()
-//	delete(cm.server.connections, connId)
-//	//if len(cm.server.connections) == 0 && cm.server.fileSocket != nil {
-//	//	cm.server.fileSocket.Close()
-//	//	cm.server.fileSocket = nil
-//	//}
-//	cm.server.socketMu.Unlock()
-//
-//	fmt.Println("Esecuzione del servizio")
-//	go exec.Exec(args["Command"].(Service).ServiceID)
-//
-//}	
-
-func (cm *ConsensusModule) SendService(args map[string] interface{}) {
-
-	conn, err := cm.server.fileSocket.Accept()
-	if err != nil {
-		panic(err)
-	}
-	defer func() {
-		conn.Close()
-		cm.server.socketMu.Lock()
-		delete(cm.server.connections, &conn)
-		cm.server.socketMu.Unlock()
-	}()
-
-	cm.server.socketMu.Lock()
-	cm.server.connections[&conn] = true
-	cm.server.socketMu.Unlock()
+func (cm *ConsensusModule) SendService(conn net.Conn, args map[string] interface{}) {
 
 	bufSize := 1024
-	message, err := cm.Receive(&conn, bufSize, "")
+	message, err := cm.Receive(conn, bufSize, "")
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("Ricevuta richiesta per %s da %s\n", message, conn.RemoteAddr().String())
 
 	if _, err := os.Stat("services/" + message); os.IsNotExist(err) {
-		cm.Send("Not found", &conn, bufSize)
+		cm.Send("Not found", conn, bufSize)
 		fmt.Println("services/" + message)
 		return
 	}
 
 	file, _ := os.ReadFile("services/" + message)
 
-	if err := cm.Send(string(file), &conn, bufSize); err != nil {
+	if err := cm.Send(string(file), conn, bufSize); err != nil {
 		panic(err)
 	}
 
 	fmt.Printf("Inviato %s a %s\n", message, conn.RemoteAddr().String())
 
+	conn.Close()
 }
 
 func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
@@ -992,16 +881,19 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 
 	bufSize := 1024
 
-	if err := cm.Send(args["Command"].(Service).ServiceID, &conn, bufSize); err != nil {
+	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
 		panic(err)
 	}
-
-	mess, err := cm.Receive(&conn, bufSize, args["Command"].(Service).ServiceID)
+	fmt.Printf("Inviata la richiesta per %s a %d\n", args["Command"].(Service).ServiceID, leaderId)
+	mess, err := cm.Receive(conn, bufSize, args["Command"].(Service).ServiceID)
 
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-
+	if mess == "Not found" {
+		fmt.Printf("Not found %s\n", args["Command"].(Service).ServiceID)
+		return
+	}
 	service := mess
 
 	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID, []byte(service), 0600); err != nil {
@@ -1014,53 +906,42 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 
 }
 
-func (cm *ConsensusModule) Send(mess string, conn *net.Conn, bufSize int) error {
+func (cm *ConsensusModule) Send(mess string, conn net.Conn, bufSize int) error {
 
 	var buf []byte
-	for len(mess) > bufSize {
+	for len(mess) > bufSize || len(mess + "%") > bufSize {
 		buf = []byte(mess[:bufSize])
-		if _, err := (*conn).Write(buf); err != nil {
+		if _, err := (conn).Write(buf); err != nil {
 			return err
 		}
 		mess = mess[bufSize:]
 	}
 
-	if len(mess) > 0 {
-		mess = mess + strings.Repeat(" ", bufSize - len(mess))
-		buf = []byte(mess)
-		if _, err := (*conn).Write(buf); err != nil {
+		buf = []byte(mess+"%")
+		if _, err := (conn).Write(buf); err != nil {
 			return err
 		}
-		fmt.Printf("Ho inviato %s a %s con la conn %v\n", mess, (*conn).RemoteAddr().String(), (*conn))
-
-	}
-	time.Sleep(300 * time.Millisecond)
-	if _, err := (*conn).Write([]byte("END")); err != nil {
-		return err
-	}
 
 	return nil
 }
 
-func (cm *ConsensusModule) Receive(conn *net.Conn, bufSize int, service string) (string, error) {
+func (cm *ConsensusModule) Receive(conn net.Conn, bufSize int, service string) (string, error) {
 
 	mess := ""
-	fmt.Printf("\nSono entrato in receive per %s con la conn %v\n\n", service, (*conn))
 	for {
 		buf := make([]byte, bufSize)
-		n, err := (*conn).Read(buf)
+		n, err := (conn).Read(buf)
 		if err != nil {
 			return "", err
 		}
 
-		os.WriteFile("prova/" + service, []byte(string(buf[:n])), 0600)
-		if string(buf[:n]) == "END" {
-			fmt.Printf("\nSto per uscire da receive per %s con la conn %v\n\n", service, (*conn))
-			return mess, nil
-		} else {
-			mess += strings.TrimSpace(string(buf[:n]))
+		mess += string(buf[:n])
+		if n < bufSize || (n == bufSize && string(buf[n-1]) == "%") {
+			break
 		}
+		time.Sleep(50 * time.Millisecond)
 	}
+	return mess[:len(mess)-1], nil
 }
 
 func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry) {

@@ -41,8 +41,6 @@ type Server struct {
 	wg    sync.WaitGroup
 
 	fileSocket 	net.Listener	
-	connections map[*net.Conn]bool
-	socketMu 	sync.Mutex
 
 }
 
@@ -57,8 +55,6 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
 	s.fileSocket, _ = net.Listen("tcp", ":" + os.Getenv("SERVICE_PORT"))
-	s.connections = make(map[*net.Conn]bool)
-	s.socketMu = sync.Mutex{}
 	return s
 }
 
