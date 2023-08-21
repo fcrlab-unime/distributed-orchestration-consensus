@@ -60,7 +60,7 @@ func (ms *MapStorage) Get(key string) (interface{}, bool) {
 	defer ms.mu.Unlock()
 	times := []time.Time{}
 	for _, v := range ms.m {
-		time, _ := time.Parse("2006-01-02 15:04:05.0000", v["Time"].(string))
+		time, _ := time.Parse("2006-01-02 15:04:05.0000", v["Timestamp"].(string))
 		times = append(times, time)
 	}
 	sort.Slice(times, func(i, j int) bool {
