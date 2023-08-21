@@ -44,13 +44,13 @@ func parseService(command string) map[string]string {
 	parsedCommand := make(map[string]interface{})
 	err := yaml.Unmarshal([]byte(command), &parsedCommand)
 	if err != nil {
-		fmt.Errorf("Error: %v\n", err)
+		fmt.Printf("Error: %v\n", err)
 	}
 	Type := parsedCommand["ServiceType"].(string)
 	delete(parsedCommand, "ServiceType")
 	Command, err := yaml.Marshal(parsedCommand)
 	if err != nil {
-		fmt.Errorf("Error: %v\n", err)
+		fmt.Printf("Error: %v\n", err)
 	}
 
 	service := make(map[string]string)
