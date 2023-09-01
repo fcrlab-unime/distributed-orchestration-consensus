@@ -6,7 +6,7 @@ package server
 
 import (
 	"crypto/sha256"
-	exec "exec"
+	"os/exec"
 	"fmt"
 	"log"
 	"math/rand"
@@ -283,7 +283,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 			if isLeader && isChosen {
 				// TODO: Inserire esecuzione da parte del leader
 				fmt.Println("Esecuzione da parte del leader")
-				go exec.Exec(termData["Command"].(Service).ServiceID)
+				go Exec(termData["Command"].(Service).ServiceID)
 			} else if isLeader {
 				conn, err := cm.server.fileSocket.Accept()
 				if err != nil {
@@ -902,7 +902,7 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 
 	fmt.Printf("Ricevuto %s da %s\n", args["Command"].(Service).ServiceID, args["Leader"].(string))
 
-	go exec.Exec(args["Command"].(Service).ServiceID)
+	go Exec(args["Command"].(Service).ServiceID)
 
 }
 
@@ -961,4 +961,9 @@ func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry)
 	newLog.Index = fmt.Sprintf("%x", sha256.Sum256(sum))
 	return newLog
 			 
+}
+
+func Exec(service string) {
+	exec.Command("docker-compose", "-f", "/home/raft/services/" + service, "up", "-d").Start()
+	fmt.Printf("Eseguito %s\n", service)
 }
