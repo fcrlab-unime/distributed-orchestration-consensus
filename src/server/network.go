@@ -33,6 +33,7 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 
 func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, exPeerChan *chan net.Addr, check bool) (newPeers []net.Addr) {
 
+	// check is true if we want to get new or ex peers in the network
 	if check {
 		if _, err := os.Stat("/tmp/ip.fifo"); os.IsNotExist(err) {
 			syscall.Mkfifo("/tmp/ip.fifo", 0666)
@@ -42,7 +43,7 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 			syscall.Mkfifo("/tmp/exip.fifo", 0666)
 		}
 
-
+		// It reads the exip.fifo file and sends the ip to the exPeerChan channel
 		go func(exPeerChan *chan net.Addr) {
 			exPipe, _ := os.OpenFile("/tmp/exip.fifo", os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
 			exReader := bufio.NewReader(exPipe)
@@ -56,7 +57,8 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 				*exPeerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
 			}
 		}(exPeerChan)
-
+		
+		// It reads the ip.fifo file and send the ip to the peerChan channel
 		newPipe, _ := os.OpenFile("/tmp/ip.fifo", os.O_RDONLY|syscall.O_NONBLOCK, os.ModeNamedPipe)
 		newReader := bufio.NewReader(newPipe)
 		exec.Command("bash", "/home/raft/scripts/get_ip.sh", "ping", serverIp.String(), subnetMask).Start()
@@ -73,6 +75,7 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, e
 			*peerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
 		}
 	} else {
+		// If check is false, it will get all peers in the network and returns them
 		if _, err := os.Stat("/tmp/newip.txt"); err == nil {
 			os.Truncate("/tmp/newip.txt", 0)
 		}

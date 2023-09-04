@@ -98,7 +98,3 @@ func GetLoadLevel() int {
 
 	return loadLevel
 }
-
-//func main () {
-//	fmt.Printf("Urgency: %d\n", getUrgency())
-//}

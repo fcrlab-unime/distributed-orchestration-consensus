@@ -60,7 +60,6 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 
 func (s *Server) Serve(ip net.Addr, wg *sync.WaitGroup, ready chan interface{}) {
 	s.mu.Lock()
-	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
 
 	// Create a new RPC server and register a RPCProxy that forwards all methods
 	// to n.cm

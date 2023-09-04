@@ -18,6 +18,7 @@ func main(){
 }
 
 func startServer() *s.Server {
+	// Creates a new server and other network info.
 	ready := make(chan interface{})
 	storage := st.NewMapStorage()
 	commitChannel := make(chan s.CommitEntry)
@@ -25,11 +26,12 @@ func startServer() *s.Server {
 	serverId := s.GetServerIdFromIp(serverIp, subnetMask)
 	defaultGateway := s.GetDefaultGateway()
 
+	// Gets all peers in the cluster.
 	peersAddrs := s.GetPeersIp(serverIp, subnetMask, nil, nil, false)
 	peersIds := []int{}
 	peers := make(map[int]net.Addr)
 
-	// Create all Servers in this cluster, assign ids and peer ids.
+	// Assigns ids to peers.
 	for p := 0; p < len(peersAddrs); p++ {
 		if peersAddrs[p] != serverIp && peersAddrs[p].String() != defaultGateway.String() {
 			id := s.GetServerIdFromIp(peersAddrs[p], subnetMask)
@@ -38,13 +40,18 @@ func startServer() *s.Server {
 		}
 	}
 	
+	// Creates the server and its consensus module.
 	server := s.NewServer(serverId, storage, ready, commitChannel)
-	
+	server.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
+
 	wg := sync.WaitGroup{}
 	wg.Add(1)
+
+	// Wraps the server in a RPC server.
 	go server.Serve(serverIp, &wg, ready)
 	<-ready
 
+	// Connect to all the detected peers.
 	for id, addr := range peers {
 		error := server.ConnectToPeer(id, addr)
 		fmt.Printf("Result: %v\n", error)
@@ -53,11 +60,12 @@ func startServer() *s.Server {
 			delete(peers, id)
 		}
 	}
-	// Connect all peers to each other.
+
 	time.Sleep(1 * time.Second)
 	close(ready)
 	wg.Wait()
 
+	// Starts checking for new peers.
 	go s.CheckNewPeers(server, &peers)
 
 	return server
