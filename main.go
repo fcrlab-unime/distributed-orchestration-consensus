@@ -40,9 +40,8 @@ func startServer() *s.Server {
 		}
 	}
 	
-	// Creates the server and its consensus module.
+	// Creates the server.
 	server := s.NewServer(serverId, storage, ready, commitChannel)
-	server.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
