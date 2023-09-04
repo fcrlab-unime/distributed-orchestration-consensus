@@ -55,7 +55,7 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
 	s.fileSocket, _ = net.Listen("tcp", ":" + os.Getenv("SERVICE_PORT"))
-	s.cm = NewConsensusModule(serverId, s.peerIds, s.storage, s.commitChan, s.quit, s.fileSocket)
+	s.cm = NewConsensusModule(s.serverId, &s, s.storage, s.ready, s.commitChan) 
 	return s
 }
 
