@@ -7,7 +7,7 @@ import (
 	"os"
 	"sort"
 	"sync"
-	"time"
+	t "time"
 )
 
 // Storage is an interface implemented by stable storage providers.
@@ -58,15 +58,17 @@ func NewMapStorage() *MapStorage {
 func (ms *MapStorage) Get(key string) (interface{}, bool) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	times := []time.Time{}
+	times := []t.Time{}
+	terms := map[t.Time]string{}
 	for _, v := range ms.m {
-		time, _ := time.Parse("2006-01-02 15:04:05.0000", v["Timestamp"].(string))
+		time, _ := t.Parse("2006-01-02 15:04:05.0000", v["Timestamp"].(string))
 		times = append(times, time)
+		terms[time] = v["Term"].(string)
 	}
 	sort.Slice(times, func(i, j int) bool {
 		return times[i].Before(times[j])
 	})
-	v, found := ms.m[times[len(times)-1].String()][key]
+	v, found := terms[times[len(times)-1]]
 	return v, found
 }
 

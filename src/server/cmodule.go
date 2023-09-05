@@ -241,7 +241,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 	cm.currentTerm, _ = strconv.Atoi(Term.(string))
 
 	logs := cm.storage.GetLog()
-	for _, log := range logs {
+	for id, log := range logs {
 		Term, _ := strconv.Atoi(log["Term"].(string))
 		LeaderId, _ := strconv.Atoi(log["Leader"].(string))
 		ChosenId, _ := strconv.Atoi(log["Chosen"].(string))
@@ -251,7 +251,7 @@ func (cm *ConsensusModule) restoreFromStorage() {
 				SType(log["Command"].(map[string]interface{})["Type"].(string))},
 			Term: Term,
 			LeaderId: LeaderId,
-			Index: log["Id"].(string),
+			Index: id,
 			ChosenId: ChosenId,
 			Timestamp: log["Timestamp"].(string),
 		}
