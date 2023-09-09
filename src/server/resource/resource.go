@@ -2,47 +2,39 @@ package load
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
-	"time"
+	"os/exec"
 )
 
-func getCPU() (total float64, idle float64) {
-	contents, err := ioutil.ReadFile("/proc/stat")
-	if err != nil {
-		return 
-	}
-	lines := strings.Split(string(contents), "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if fields[0] == "cpu" {
-			numFields := len(fields)
-			for i := 1; i < numFields; i++ {
-				val, err := strconv.ParseFloat(fields[i], 64)
-				if err != nil {
-					fmt.Printf("error parsing cpu stat: %v\n", err)
-				}
-				total += val
-				if i == 4 {
-					idle = val
-				}
-			}
-			return
-		}
-	}
-	return
-}
-
 func getCPUPercent() float64 {
-	total1, idle1 := getCPU()
-	time.Sleep(200 * time.Millisecond)
-	total2, idle2 := getCPU()
-	return 100 * (1 - ((idle2 - idle1)) / (total2 - total1))
+	c1 := exec.Command("vmstat")
+	c2 := exec.Command("tail", "-1")
+	c3 := exec.Command("awk", "{print $15}")
+
+	c2.Stdin, _ = c1.StdoutPipe()
+	c3.Stdin, _ = c2.StdoutPipe()
+	
+	c1.Start()
+	c2.Start()
+	res, err := c3.Output()
+
+	if err == nil {
+		percent, err := strconv.ParseFloat(string(res[:len(res)-1]), 64)
+		percent = 100 - percent
+		if err == nil {
+			return percent
+		} else {
+			panic(err)
+		}
+	} else {
+		panic(err)
+	}
 }
 
 func getMem() (total float64, free float64) {
-	contents, err := ioutil.ReadFile("/proc/meminfo")
+	contents, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return 
 	}
@@ -68,7 +60,7 @@ func getMem() (total float64, free float64) {
 			continue
 		}
 	}
-	return
+	return total, free
 }
 
 func getMemPercent() float64 {

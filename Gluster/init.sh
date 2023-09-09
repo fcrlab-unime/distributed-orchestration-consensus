@@ -5,4 +5,4 @@ mkdir -p /log
 
 /bin/connect.sh
 /bin/check_new.sh & 
-/bin/check_ex.sh 
+tail -f /dev/null

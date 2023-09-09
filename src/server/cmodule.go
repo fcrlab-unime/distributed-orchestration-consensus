@@ -102,6 +102,7 @@ type ConsensusModule struct {
 	// SubmitChan is used to submit the command
 	ResumeChan chan interface{}
 	SubmitChan chan interface{}
+	StartedChan chan interface{}
 
 	// storage is used to persist state.
 	storage st.Storage
@@ -156,37 +157,19 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.commitChan = commitChan
 	cm.ResumeChan = make(chan interface{}, 2)
 	cm.SubmitChan = make(chan interface{}, 1)
+	cm.StartedChan = make(chan interface{}, 1)
 	cm.newCommitReadyChan = make(chan struct{})
 	cm.chosenChan = make(chan interface{}, 1)
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
 	cm.stopSendingAEsChan = make(chan interface{}, 1)
-	cm.loadLevel = 10
+	cm.loadLevel = -1
 	cm.commitIndex = -1
 	cm.lastApplied = -1
 	cm.nextIndex = make(map[int]int)
 	cm.matchIndex = make(map[int]int)
 
-	if cm.storage.HasData() {
-		cm.restoreFromStorage()
-	}
-
-	//go func() {
-	//	// The CM is dormant until ready is signaled; then, it starts a countdown
-	//	// for leader election.
-	//	<-ready
-	//	cm.Mu.Lock()
-	//	cm.electionResetEvent = time.Now()
-	//	cm.Mu.Unlock()	
-	//	//if cm.id > 5 {
-	//	//	cm.startElection()
-	//	//} else {
-	//	//	cm.runElectionTimer()
-	//	//}
-	//}()
-	
-	go cm.monitorLoad()
 	go cm.commitChanSender()
 	return cm
 }
@@ -228,36 +211,6 @@ func (cm *ConsensusModule) Stop() {
 	cm.state = Dead
 	cm.Dlog("becomes Dead")
 	close(cm.newCommitReadyChan)
-}
-
-// restoreFromStorage restores the persistent state of this CM from storage.
-// It should be called during constructor, before any concurrency concerns.
-func (cm *ConsensusModule) restoreFromStorage() {
-	
-	Term, found := cm.storage.Get("Term")
-	if !found {
-		panic("no Term found in storage")
-	}
-	cm.currentTerm, _ = strconv.Atoi(Term.(string))
-
-	logs := cm.storage.GetLog()
-	for id, log := range logs {
-		Term, _ := strconv.Atoi(log["Term"].(string))
-		LeaderId, _ := strconv.Atoi(log["Leader"].(string))
-		ChosenId, _ := strconv.Atoi(log["Chosen"].(string))
-		Log := LogEntry{
-			Command: Service{
-				log["Command"].(map[string]interface{})["ServiceID"].(string),
-				SType(log["Command"].(map[string]interface{})["Type"].(string))},
-			Term: Term,
-			LeaderId: LeaderId,
-			Index: id,
-			ChosenId: ChosenId,
-			Timestamp: log["Timestamp"].(string),
-		}
-		cm.log = append(cm.log, Log)
-	}
-
 }
 
 // persistToStorage saves all of CM's persistent state in cm.storage.
@@ -327,6 +280,7 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	if cm.state == Dead {
 		return nil
 	}
+	cm.monitorLoad()
 	lastLogIndex, lastLogTerm := cm.lastLogIndexAndTerm()
 	cm.Dlog("RequestVote: %+v [currentTerm=%d, votedFor=%d, log index/term=(%d, %d)]", args, cm.currentTerm, cm.votedFor, lastLogIndex, lastLogTerm)
 
@@ -472,7 +426,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 func runVoteDelay(loadLevel int) {
 	delay := time.Duration(100/loadLevel) * time.Millisecond
-	//fmt.Printf("delay: %d\n", time.Duration((1 / float64(loadLevel)) * float64(time.Millisecond)))
 	time.Sleep(delay)
 }
 
@@ -484,14 +437,13 @@ func (cm *ConsensusModule) StartElection() {
 	savedCurrentTerm := cm.currentTerm
 	cm.votedFor = cm.id
 	cm.Dlog("becomes Candidate (currentTerm=%d); log=%v; loadLevel=%v", savedCurrentTerm, cm.log, cm.loadLevel)
-	//wg := sync.WaitGroup{}
 	votesReceived := 1
 
 	// Send RequestVote RPCs to all other servers concurrently.
+	cm.monitorLoad()
 	cm.loadLevelMap[cm.id] = cm.loadLevel
 	for _, peerId := range cm.peerIds {
-		//wg.Add(1)
-		go func(peerId int) {//, wg *sync.WaitGroup) {
+		go func(peerId int) {
 			cm.Mu.Lock()
 			savedLastLogIndex, savedLastLogTerm := cm.lastLogIndexAndTerm()
 			cm.Mu.Unlock()
@@ -509,7 +461,6 @@ func (cm *ConsensusModule) StartElection() {
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
 				cm.Mu.Lock()
 				cm.loadLevelMap[peerId] = reply.LoadLevel
-				//defer wg.Done()
 				defer cm.Mu.Unlock()
 				cm.Dlog("received RequestVoteReply %+v", reply)
 
@@ -538,18 +489,9 @@ func (cm *ConsensusModule) StartElection() {
 					}
 				}
 			}
-		}(peerId)//, &wg)
+		}(peerId)
 	}
 
-	// The need of a WaitGroup is due to the fact that together with the
-	// vote request, the server sends the load level. The server with the
-	// lowest load level will be the chosen one for the deployment of the
-	// service.
-	//wg.Wait()
-
-	// Run another election timer, in case this election is not successful.
-	//go cm.runElectionTimer()
-	//go cm.StartElection()
 }
 
 // becomeFollower makes cm a follower and resets its state.
@@ -783,25 +725,11 @@ func (cm *ConsensusModule) Resume() {
 }
 
 func (cm *ConsensusModule) monitorLoad() {
-	load := 0
-	for {
-		load = l.GetLoadLevel()
-		//if time.Now().Unix() % 10 == 6 {
-		//	load = 10
-		//}
-
-		cm.Mu.Lock()
-		cm.loadLevel = load
-		// TODO: Sistemare per la migration
-		//if cm.loadLevel > 8 {
-		//	cm.Mu.Unlock()
-		//	cm.server.Submit(cm.id)
-		//} else {
-		//	cm.Mu.Unlock()
-		//}
-		cm.Mu.Unlock() // Temporary
-		time.Sleep(2 * time.Second)	
+	if cm.loadLevel == -1 {
+		cm.StartedChan <- struct{}{}
+		exec.Command("pkill", "bash").Run()
 	}
+	cm.loadLevel = l.GetLoadLevel()
 }
 
 func (cm *ConsensusModule) DisconnectPeer(peerId int) {
@@ -843,9 +771,9 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 	return lowestPeers[rand.Intn(len(lowestPeers))]
 }
 
-func (cm *ConsensusModule) SendService(conn net.Conn, args map[string] interface{}) {
+func (cm *ConsensusModule) SendService(conn net.Conn, args map[string]interface{}) {
 
-	bufSize := 1024
+	bufSize := 4096
 	message, err := cm.Receive(conn, bufSize, "")
 	if err != nil {
 		panic(err)
@@ -879,7 +807,7 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 	}
 	defer conn.Close()
 
-	bufSize := 1024
+	bufSize := 4096
 
 	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
 		panic(err)
@@ -917,10 +845,10 @@ func (cm *ConsensusModule) Send(mess string, conn net.Conn, bufSize int) error {
 		mess = mess[bufSize:]
 	}
 
-		buf = []byte(mess+"%")
-		if _, err := (conn).Write(buf); err != nil {
-			return err
-		}
+	buf = []byte(mess+"%")
+	if _, err := (conn).Write(buf); err != nil {
+		return err
+	}
 
 	return nil
 }
