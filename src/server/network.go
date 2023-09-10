@@ -26,7 +26,7 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 		}
 	}
 	ip = &net.IPAddr{IP: net.ParseIP(infos[0])}
-	subnetMask = infos[1]
+	//subnetMask = infos[1]
 	//return ip, subnetMask
 	return ip, "25"
 }
@@ -90,9 +90,6 @@ func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 		addr, notClosed := <-peerChan
 		if !notClosed {
 			return
-		}
-		if addr.String() == "172.16.5.22" || addr.String() == "172.16.5.102" {
-			continue
 		}
 		defaultGateway := GetDefaultGateway()
 		tmpId := 0

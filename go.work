@@ -1,4 +1,5 @@
-go 1.18
+go 1.21
 
 use ./src/server
 use ./src/log
+use ./test

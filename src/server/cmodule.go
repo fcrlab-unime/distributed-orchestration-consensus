@@ -136,7 +136,6 @@ type ConsensusModule struct {
 	commitIndex        int
 	lastApplied        int
 	state              CMState
-	electionResetEvent time.Time
 
 	// Volatile Raft state on leaders
 	nextIndex  map[int]int
@@ -260,22 +259,28 @@ func (cm *ConsensusModule) Dlog(format string, args ...interface{}) {
 
 // See figure 2 in the paper.
 type RequestVoteArgs struct {
-	Term         int
-	CandidateId  int
-	LastLogIndex int
-	LastLogTerm  int
-	LoadLevel    int
+	Term         	int
+	CandidateId  	int
+	LastLogIndex 	int
+	LastLogTerm  	int
+	LoadLevel    	int
+	ElectionNetTime time.Time
 }
 
 type RequestVoteReply struct {
-	Term        int
-	VoteGranted bool
-	LoadLevel   int
+	Term        	int
+	VoteGranted 	bool
+	LoadLevel   	int
+	ElectionNetArr  time.Duration
+	VoteElabTime 	time.Duration
+	ElectionNetRet  time.Time
 }
 
 // RequestVote RPC.
 func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
 	cm.Mu.Lock()
+	reply.ElectionNetArr = time.Since(args.ElectionNetTime)
+	voteTime := time.Now()
 	defer cm.Mu.Unlock()
 	if cm.state == Dead {
 		return nil
@@ -302,11 +307,12 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 		reply.VoteGranted = true
 		reply.LoadLevel = cm.loadLevel
 		cm.votedFor = args.CandidateId
-		cm.electionResetEvent = time.Now()
 	} else {
 		reply.VoteGranted = false
 	}
 	reply.Term = cm.currentTerm
+	reply.VoteElabTime = time.Since(voteTime)
+	reply.ElectionNetRet = time.Now()
 	cm.Dlog("... RequestVote reply: %+v", reply)
 	return nil
 }
@@ -431,7 +437,7 @@ func runVoteDelay(loadLevel int) {
 
 // startElection starts a new election with this CM as a candidate.
 // Expects cm.Mu to be locked.
-func (cm *ConsensusModule) StartElection() {
+func (cm *ConsensusModule) StartElection(index ...int) {
 	cm.state = Candidate
 	cm.currentTerm += 1
 	savedCurrentTerm := cm.currentTerm
@@ -442,8 +448,8 @@ func (cm *ConsensusModule) StartElection() {
 	// Send RequestVote RPCs to all other servers concurrently.
 	cm.monitorLoad()
 	cm.loadLevelMap[cm.id] = cm.loadLevel
-	for _, peerId := range cm.peerIds {
-		go func(peerId int) {
+	for t, peerId := range cm.peerIds {
+		go func(peerId int, t int) {
 			cm.Mu.Lock()
 			savedLastLogIndex, savedLastLogTerm := cm.lastLogIndexAndTerm()
 			cm.Mu.Unlock()
@@ -458,8 +464,17 @@ func (cm *ConsensusModule) StartElection() {
 
 			cm.Dlog("sending RequestVote to %d: %+v", peerId, args)
 			var reply RequestVoteReply
+			if os.Getenv("TIME") == "1" {
+				cm.server.Times[index[0]].SetStartTime("EN1", t)
+				args.ElectionNetTime = cm.server.Times[index[0]].ElectionNetwork1StartTimes[t]
+			}
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
 				cm.Mu.Lock()
+				if os.Getenv("TIME") == "1" {
+					cm.server.Times[index[0]].ElectionNetwork2Durations[t] = time.Since(reply.ElectionNetRet)
+					cm.server.Times[index[0]].ElectionNetwork1Durations[t] = reply.ElectionNetArr
+					cm.server.Times[index[0]].VoteElectionDurations[t] = reply.VoteElabTime
+				}
 				cm.loadLevelMap[peerId] = reply.LoadLevel
 				defer cm.Mu.Unlock()
 				cm.Dlog("received RequestVoteReply %+v", reply)
@@ -489,7 +504,7 @@ func (cm *ConsensusModule) StartElection() {
 					}
 				}
 			}
-		}(peerId)
+		}(peerId, t)
 	}
 
 }
@@ -714,10 +729,14 @@ func (cm *ConsensusModule) Pause() {
 	cm.Mu.Unlock()
 }
 
-func (cm *ConsensusModule) Resume() {
+func (cm *ConsensusModule) Resume(index ...int) {
 	cm.Mu.Lock()
 	if cm.state != Leader {
-		cm.StartElection()
+		if os.Getenv("TIME") == "1" {
+			cm.StartElection(index[0])
+		} else {
+			cm.StartElection()
+		}
 	} else {
 		cm.startLeader()
 	}

@@ -14,6 +14,7 @@ import (
 	"os"
 	st "storage"
 	"sync"
+	"test"
 	"time"
 )
 
@@ -40,6 +41,8 @@ type Server struct {
 	quit  chan interface{}
 	wg    sync.WaitGroup
 
+	Times map[int]*test.Times
+
 	fileSocket 	net.Listener	
 
 }
@@ -55,6 +58,7 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
 	s.fileSocket, _ = net.Listen("tcp", ":" + os.Getenv("SERVICE_PORT"))
+	s.Times = make(map[int]*test.Times)
 	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan) 
 	return s
 }
@@ -234,9 +238,16 @@ func (s *Server) GetConsensusModule() *ConsensusModule {
 	return s.cm
 }
 
-func (s *Server) Submit(command *Service) {
-	s.cm.Resume()
+func (s *Server) Submit(command *Service, index ...int) {
+	if os.Getenv("TIME") == "1" {
+		s.cm.Resume(index[0])
+	} else {
+		s.cm.Resume()
+	}
 	<- s.cm.ResumeChan
+	if os.Getenv("TIME") == "1" {
+		s.Times[index[0]].SetDurationAndWrite(index[0], "ENVE")
+	}
 	s.cm.Submit(command)
 	<- s.cm.SubmitChan
 	s.cm.Pause()

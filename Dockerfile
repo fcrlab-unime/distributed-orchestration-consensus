@@ -1,7 +1,7 @@
-FROM golang:bullseye
+FROM golang:latest
 
 RUN apt update && apt -y upgrade
-RUN apt -y install fping iproute2 telnet vim iputils-ping nmap netcat fuse 
+RUN apt -y install fping iproute2 telnet vim iputils-ping nmap netcat-openbsd fuse 
 RUN wget -O - https://download.gluster.org/pub/gluster/glusterfs/9/rsa.pub | apt-key add - && \
     echo deb [arch=amd64] https://download.gluster.org/pub/gluster/glusterfs/9/LATEST/Debian/bullseye/amd64/apt bullseye main > /etc/apt/sources.list.d/gluster.list && \
     apt update
@@ -19,6 +19,7 @@ ENV RPC_PORT=4000
 ENV SERVICE_PORT=4001
 ENV GATEWAY_PORT=9093
 ENV DEBUG=0
+ENV TIME=0
 
 RUN go build main.go
 

@@ -8,6 +8,7 @@ import (
 	st "storage"
 	"strings"
 	"sync"
+	"test"
 	"time"
 	"golang.org/x/exp/slices"
 	yaml "gopkg.in/yaml.v3"
@@ -77,16 +78,24 @@ func waitSubmit(server *s.Server) {
 		panic(err)
 	}
 	defer listener.Close()
+	index := 1 // For time measurement.
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			panic(err)
 		}
-		go handleConnection(conn, server)
+		if os.Getenv("TIME") == "1" {
+			server.Times[index] = test.NewTimesStruct(server.GetId())
+			server.Times[index].SetStartTime("RE")
+			go handleConnection(conn, server, index)
+			index++
+		} else {
+			go handleConnection(conn, server)
+		}
 	}
 }
 
-func handleConnection(conn net.Conn, server *s.Server) {
+func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	defer conn.Close()
 	for {
 		buf := make([]byte, 4096) 
@@ -104,7 +113,12 @@ func handleConnection(conn net.Conn, server *s.Server) {
 		for _, service := range services {
 			command := s.NewService(service, server)
 			if err == nil {
-				server.Submit(command)
+				if os.Getenv("TIME") == "1" {
+					server.Times[index[0]].SetDurationAndWrite(index[0], "RE")
+					server.Submit(command, index[0])
+				} else {
+					server.Submit(command)
+				}
 			}
 		}
 	}
