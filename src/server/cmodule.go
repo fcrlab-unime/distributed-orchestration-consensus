@@ -224,7 +224,7 @@ func (cm *ConsensusModule) Stop() {
 
 func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 	
-	if os.Getenv("TIME") == "1" {
+	if os.Getenv("TIME") == "1" && index != nil {
 		cm.server.Times[index[0]].SetStartTime("WL")
 	}
 	for _, log := range logs {
