@@ -125,7 +125,8 @@ type ConsensusModule struct {
 
 	// triggerAEChan is an internal notification channel used to trigger
 	// sending new AEs to followers when interesting changes occurred.
-	triggerAEChan chan struct{}
+	triggerAEChan 		chan struct{}
+	triggerAECommitChan chan struct{}
 
 	// Persistent Raft state on all servers
 	currentTerm int
@@ -160,6 +161,7 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.newCommitReadyChan = make(chan struct{})
 	cm.chosenChan = make(chan interface{}, 1)
 	cm.triggerAEChan = make(chan struct{}, 1)
+	cm.triggerAECommitChan = make(chan struct{}, 1)
 	cm.state = Follower
 	cm.votedFor = -1
 	cm.stopSendingAEsChan = make(chan interface{}, 1)
@@ -185,13 +187,18 @@ func (cm *ConsensusModule) Report() (id int, term int, isLeader bool) {
 // committed entries. It returns true iff this CM is the leader - in which case
 // the command is accepted. If false is returned, the client will have to find
 // a different CM to submit this command to.
-func (cm *ConsensusModule) Submit(command *Service) {
+func (cm *ConsensusModule) Submit(command *Service, index ...int) {
 	cm.Mu.Lock()
 	cm.Dlog("Submit received: %v", command)
 	if cm.state == Leader {
 		chosenId := cm.minLoadLevelMap()
+		if os.Getenv("TIME") == "1" {
+			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "CP")
+			cm.server.Times[index[0]].SetStartTime("VP")
+		}
 		newLog := cm.NewLog(command, chosenId)
 		cm.log = append(cm.log, newLog)
+
 		cm.Mu.Unlock()
 		cm.Dlog("... log=%v", cm.log)
 		cm.triggerAEChan <- struct{}{}
@@ -264,22 +271,18 @@ type RequestVoteArgs struct {
 	LastLogIndex 	int
 	LastLogTerm  	int
 	LoadLevel    	int
-	ElectionNetTime time.Time
 }
 
 type RequestVoteReply struct {
 	Term        	int
 	VoteGranted 	bool
 	LoadLevel   	int
-	ElectionNetArr  time.Duration
 	VoteElabTime 	time.Duration
-	ElectionNetRet  time.Time
 }
 
 // RequestVote RPC.
 func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
 	cm.Mu.Lock()
-	reply.ElectionNetArr = time.Since(args.ElectionNetTime)
 	voteTime := time.Now()
 	defer cm.Mu.Unlock()
 	if cm.state == Dead {
@@ -312,7 +315,6 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	}
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteTime)
-	reply.ElectionNetRet = time.Now()
 	cm.Dlog("... RequestVote reply: %+v", reply)
 	return nil
 }
@@ -337,11 +339,14 @@ type AppendEntriesReply struct {
 	// 5.3 in the paper.)
 	ConflictIndex int
 	ConflictTerm  int
+
+	VoteElabTime  time.Duration
 }
 
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	cm.Mu.Lock()
 	defer cm.Mu.Unlock()
+	voteElabTime := time.Now()
 	if cm.state == Dead {
 		return nil
 	}
@@ -425,6 +430,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	}
 
 	reply.Term = cm.currentTerm
+	reply.VoteElabTime = time.Since(voteElabTime)
 	cm.Dlog("AppendEntries reply: %+v", *reply)
 
 	return nil
@@ -466,13 +472,11 @@ func (cm *ConsensusModule) StartElection(index ...int) {
 			var reply RequestVoteReply
 			if os.Getenv("TIME") == "1" {
 				cm.server.Times[index[0]].SetStartTime("EN1", t)
-				args.ElectionNetTime = cm.server.Times[index[0]].ElectionNetwork1StartTimes[t]
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
 				cm.Mu.Lock()
 				if os.Getenv("TIME") == "1" {
-					cm.server.Times[index[0]].ElectionNetwork2Durations[t] = time.Since(reply.ElectionNetRet)
-					cm.server.Times[index[0]].ElectionNetwork1Durations[t] = reply.ElectionNetArr
+					cm.server.Times[index[0]].ElectionNetworkDurations[t] = time.Since(cm.server.Times[index[0]].ElectionNetworkStartTimes[t])
 					cm.server.Times[index[0]].VoteElectionDurations[t] = reply.VoteElabTime
 				}
 				cm.loadLevelMap[peerId] = reply.LoadLevel
@@ -498,7 +502,11 @@ func (cm *ConsensusModule) StartElection(index ...int) {
 						
 							// Won the election!
 							cm.Dlog("wins election with %d votes", votesReceived)
-							cm.startLeader()	
+							if os.Getenv("TIME") == "1" {
+								cm.startLeader(index[0])
+							} else {
+								cm.startLeader()
+							}
 							return
 						}
 					}
@@ -520,7 +528,7 @@ func (cm *ConsensusModule) becomeFollower(term int) {
 
 // startLeader switches cm into a leader state and begins process of heartbeats.
 // Expects cm.Mu to be locked.
-func (cm *ConsensusModule) startLeader() {
+func (cm *ConsensusModule) startLeader(index ...int) {
 	cm.state = Leader
 	cm.ResumeChan <- struct{}{}
 	for _, peerId := range cm.peerIds {
@@ -529,45 +537,48 @@ func (cm *ConsensusModule) startLeader() {
 	}
 	cm.Dlog("becomes Leader; term=%d, nextIndex=%v, matchIndex=%v; log=%v", cm.currentTerm, cm.nextIndex, cm.matchIndex, cm.log)
 
+	var tmp []int = nil
+	if os.Getenv("TIME") == "1" {
+		tmp = index
+	}
 	// This goroutine runs in the background and sends AEs to peers:
 	// * Whenever something is sent on triggerAEChan
 	// * ... Or every 50 ms, if no events occur on triggerAEChan
-	go func(heartbeatTimeout time.Duration) {
+	go func(index []int) {
 		// Immediately send AEs to peers.
-		cm.leaderSendAEs()
-
-		t := time.NewTimer(heartbeatTimeout)
-		defer t.Stop()
 		for {
 			select {	
 				case <-cm.stopSendingAEsChan:
 					return
-				case <-t.C:
-					// Reset timer to fire again after heartbeatTimeout.
-					t.Stop()
-					t.Reset(heartbeatTimeout)
 				case <-cm.triggerAEChan:
 					// Reset timer for heartbeatTimeout.
-					if !t.Stop() {
-						<-t.C
+					cm.Mu.Lock()
+					if cm.state != Leader {
+						cm.Mu.Unlock()
+						return
 					}
-					t.Reset(heartbeatTimeout)
+					cm.Mu.Unlock()
+					if os.Getenv("TIME") == "1" {
+						cm.leaderSendAEs(index[0])
+					} else {
+						cm.leaderSendAEs()
+					}
+				case <- cm.triggerAECommitChan:
+					cm.Mu.Lock()
+					if cm.state != Leader {
+						cm.Mu.Unlock()
+						return
+					}
+					cm.Mu.Unlock()
+					cm.leaderSendAEs()
 			}
-			
-			cm.Mu.Lock()
-			if cm.state != Leader {
-				cm.Mu.Unlock()
-				return
-			}
-			cm.Mu.Unlock()
-			cm.leaderSendAEs()
 		}
-	}(2000 * time.Millisecond)
+	}(tmp)
 }
 
 // leaderSendAEs sends a round of AEs to all peers, collects their
 // replies and adjusts cm's state.
-func (cm *ConsensusModule) leaderSendAEs() {
+func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 	cm.Mu.Lock()
 	if cm.state != Leader {
 		cm.Mu.Unlock()
@@ -575,9 +586,11 @@ func (cm *ConsensusModule) leaderSendAEs() {
 	}
 	savedCurrentTerm := cm.currentTerm
 	cm.Mu.Unlock()
-
-	for _, peerId := range cm.peerIds {
-		go func(peerId int) {
+	if os.Getenv("TIME") == "1" && index != nil {
+		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VP")
+	}
+	for t, peerId := range cm.peerIds {
+		go func(peerId int, t int) {
 			cm.Mu.Lock()
 			ni := cm.nextIndex[peerId]
 			prevLogIndex := ni - 1
@@ -599,12 +612,20 @@ func (cm *ConsensusModule) leaderSendAEs() {
 				Entries:      entries,
 				LeaderCommit: cm.commitIndex,
 				ChosenId:     chosenId,
+
 			}
 			cm.Mu.Unlock()
 			cm.Dlog("sending AppendEntries to %v: ni=%d, args=%+v", peerId, ni, args)
 			var reply AppendEntriesReply
+			if os.Getenv("TIME") == "1" && index != nil {
+				cm.server.Times[index[0]].SetStartTime("VCN1", t)
+			}
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
 				cm.Mu.Lock()
+				if os.Getenv("TIME") == "1" && index != nil {
+					cm.server.Times[index[0]].VoteConsNetDurations[t] = time.Since(cm.server.Times[index[0]].VoteConsNetStartTimes[t])
+					cm.server.Times[index[0]].VoteConsElabDurations[t] = reply.VoteElabTime
+				}
 				if reply.Term > cm.currentTerm {
 					cm.Dlog("term out of date in heartbeat reply")
 					cm.becomeFollower(reply.Term)
@@ -638,9 +659,12 @@ func (cm *ConsensusModule) leaderSendAEs() {
 							// committed. Send new entries on the commit channel to this
 							// leader's clients, and notify followers by sending them AEs.
 							cm.Mu.Unlock()
+							if os.Getenv("TIME") == "1" && index != nil {
+								cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VCNVE")
+							}
 							cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							cm.newCommitReadyChan <- struct{}{}
-							cm.triggerAEChan <- struct{}{}
+							cm.triggerAECommitChan <- struct{}{}
 						} else {
 							cm.Mu.Unlock()
 						}
@@ -668,7 +692,7 @@ func (cm *ConsensusModule) leaderSendAEs() {
 					cm.Mu.Unlock()
 				}
 			}
-		}(peerId)
+		}(peerId, t)
 	}
 }
 

@@ -15,16 +15,21 @@ type Times struct {
 	RequestElabStartTime		time.Time
 	RequestElabDuration 		time.Duration
 	// Network times for the election of the leader 1.
-	ElectionNetwork1StartTimes	map[int]time.Time
-	ElectionNetwork1Durations 	map[int]time.Duration
-	// Network times for the election of the leader 2.
-	ElectionNetwork2StartTimes	map[int]time.Time
-	ElectionNetwork2Durations 	map[int]time.Duration
+	ElectionNetworkStartTimes	map[int]time.Time
+	ElectionNetworkDurations 	map[int]time.Duration
 	// Vote election times for the election of the leader by the others.
 	VoteElectionDurations		map[int]time.Duration
-
-
-
+	// Time taken to choose the node to assign to the request.
+	ChoosingPhaseStartTime		time.Time
+	ChoosingPhaseDuration		time.Duration
+	// Time taken to prepare the voting.
+	VotingPrepStartTime			time.Time
+	VotingPrepDuration			time.Duration
+	// Network times for the consensus voting phase.
+	VoteConsNetStartTimes		map[int]time.Time
+	VoteConsNetDurations		map[int]time.Duration
+	// Elaboration times for the consensus voting phase.
+	VoteConsElabDurations		map[int]time.Duration
 
 	// Mutex for the times.
 	Mu sync.Mutex
@@ -37,11 +42,16 @@ func NewTimesStruct(serverId int) (*Times) {
 	times := new(Times)
 	times.RequestElabStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
 	times.RequestElabDuration = 0
-	times.ElectionNetwork1StartTimes = make(map[int]time.Time)
-	times.ElectionNetwork1Durations = make(map[int]time.Duration)
-	times.ElectionNetwork2StartTimes = make(map[int]time.Time)
-	times.ElectionNetwork2Durations = make(map[int]time.Duration)
+	times.ElectionNetworkStartTimes = make(map[int]time.Time)
+	times.ElectionNetworkDurations = make(map[int]time.Duration)
 	times.VoteElectionDurations = make(map[int]time.Duration)
+	times.VoteConsNetStartTimes = make(map[int]time.Time)
+	times.VoteConsNetDurations = make(map[int]time.Duration)
+	times.VoteConsElabDurations = make(map[int]time.Duration)
+	times.ChoosingPhaseStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
+	times.ChoosingPhaseDuration = 0
+	times.VotingPrepStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
+	times.VotingPrepDuration = 0
 	times.Mu = sync.Mutex{}
 	times.File, _ = os.OpenFile("/log/times" + strconv.Itoa(serverId) + ".csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
@@ -56,16 +66,32 @@ func (times *Times) SetDurationAndWrite(index int, which string, netowrkIndex ..
 			mess += ",RequestElab," + strconv.FormatInt(times.RequestElabDuration.Microseconds(), 10) + "\n"
 		case which == "ENVE":
 			times.Mu.Lock()
-			meanNet1, stdDevNet1 := electionValuesCalc(times.ElectionNetwork1Durations)
-			meanNet2, stdDevNet2 := electionValuesCalc(times.ElectionNetwork2Durations)
+			for k, elem := range times.ElectionNetworkDurations {
+				times.ElectionNetworkDurations[k] = elem - times.VoteElectionDurations[k]
+			}
+			meanNet, stdDevNet := electionValuesCalc(times.ElectionNetworkDurations)
 			meanVote, stdDevVote := electionValuesCalc(times.VoteElectionDurations)
 
-			mess += ",ElectionNetworkMean1," + strconv.FormatInt(int64(meanNet1), 10) + "\n" +
-				strconv.Itoa(index) + ",ElectionNetworkStdDev1," + strconv.FormatInt(int64(stdDevNet1), 10) + "\n" +
-				strconv.Itoa(index) + ",ElectionNetworkMean2," + strconv.FormatInt(int64(meanNet2), 10) + "\n" +
-				strconv.Itoa(index) + ",ElectionNetworkStdDev2," + strconv.FormatInt(int64(stdDevNet2), 10) + "\n" +
+			mess += ",ElectionNetworkMean," + strconv.FormatInt(int64(meanNet), 10) + "\n" +
+				strconv.Itoa(index) + ",ElectionNetworkStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
 				strconv.Itoa(index) + ",VoteElectionMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
 				strconv.Itoa(index) + ",VoteElectionStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
+			times.Mu.Unlock()
+		case which == "CP":
+			times.ChoosingPhaseDuration = time.Since(times.ChoosingPhaseStartTime)
+			mess += ",ChoosingPhase," + strconv.FormatInt(times.ChoosingPhaseDuration.Microseconds(), 10) + "\n"
+		case which == "VP":
+			times.VotingPrepDuration = time.Since(times.VotingPrepStartTime)
+			mess += ",VotingPrep," + strconv.FormatInt(times.VotingPrepDuration.Microseconds(), 10) + "\n"
+		case which == "VCNVE":
+			times.Mu.Lock()
+			meanNet, stdDevNet := electionValuesCalc(times.VoteConsNetDurations)
+			meanVote, stdDevVote := electionValuesCalc(times.VoteConsElabDurations)
+
+			mess += ",VoteConsNetMean," + strconv.FormatInt(int64(meanNet-meanVote), 10) + "\n" +
+				strconv.Itoa(index) + ",VoteConsNetStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
+				strconv.Itoa(index) + ",VoteConsElabMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
+				strconv.Itoa(index) + ",VoteConsElabStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
 			times.Mu.Unlock()
 	}
 	times.Mu.Lock()
@@ -78,7 +104,13 @@ func (times *Times) SetStartTime(which string, netowrkIndex ...int) {
 		case which == "RE":
 			times.RequestElabStartTime = time.Now()
 		case which == "EN1":
-			times.ElectionNetwork1StartTimes[netowrkIndex[0]] = time.Now()
+			times.ElectionNetworkStartTimes[netowrkIndex[0]] = time.Now()
+		case which == "CP":
+			times.ChoosingPhaseStartTime = time.Now()
+		case which == "VP":
+			times.VotingPrepStartTime = time.Now()
+		case which == "VCN1":
+			times.VoteConsNetStartTimes[netowrkIndex[0]] = time.Now()
 	}
 }
 

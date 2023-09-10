@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -21,16 +20,14 @@ func main() {
 	b := 0
 	c := 0
 	mu := sync.Mutex{}
-	i := rand.Intn(len(dest))
-	timer := time.NewTimer(10 * time.Second)
+	i := 0
+	timer := time.NewTimer(1 * time.Second)
 	for b == 0 {
 		select {
 			case <-timer.C:
 				b++
-			case <-time.After(100 * time.Millisecond):
-				if c % 5 == 0 {
-					i = rand.Intn(len(dest))
-				}
+			case <-time.After(800 * time.Millisecond):
+				i = (i + 1) % len(dest)
 				mu.Lock()
 				c++
 				mu.Unlock()

@@ -247,8 +247,11 @@ func (s *Server) Submit(command *Service, index ...int) {
 	<- s.cm.ResumeChan
 	if os.Getenv("TIME") == "1" {
 		s.Times[index[0]].SetDurationAndWrite(index[0], "ENVE")
+		s.Times[index[0]].SetStartTime("CP")
+		s.cm.Submit(command, index[0])
+	} else {
+		s.cm.Submit(command)
 	}
-	s.cm.Submit(command)
 	<- s.cm.SubmitChan
 	s.cm.Pause()
 }
