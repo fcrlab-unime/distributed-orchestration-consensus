@@ -31,6 +31,8 @@ type Times struct {
 	// Elaboration times for the consensus voting phase.
 	VoteConsElabDurations		map[int]time.Duration
 
+	WriteLogStartTime			time.Time
+	WriteLogDuration			time.Duration
 	// Mutex for the times.
 	Mu sync.Mutex
 
@@ -52,6 +54,8 @@ func NewTimesStruct(serverId int) (*Times) {
 	times.ChoosingPhaseDuration = 0
 	times.VotingPrepStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
 	times.VotingPrepDuration = 0
+	times.WriteLogStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
+	times.WriteLogDuration = 0
 	times.Mu = sync.Mutex{}
 	times.File, _ = os.OpenFile("/log/times" + strconv.Itoa(serverId) + ".csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
@@ -93,6 +97,9 @@ func (times *Times) SetDurationAndWrite(index int, which string, netowrkIndex ..
 				strconv.Itoa(index) + ",VoteConsElabMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
 				strconv.Itoa(index) + ",VoteConsElabStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
 			times.Mu.Unlock()
+		case which == "WL":
+			times.WriteLogDuration = time.Since(times.WriteLogStartTime)
+			mess += ",WriteLog," + strconv.FormatInt(times.WriteLogDuration.Microseconds(), 10) + "\n"
 	}
 	times.Mu.Lock()
 	times.File.WriteString(mess)
@@ -111,6 +118,8 @@ func (times *Times) SetStartTime(which string, netowrkIndex ...int) {
 			times.VotingPrepStartTime = time.Now()
 		case which == "VCN1":
 			times.VoteConsNetStartTimes[netowrkIndex[0]] = time.Now()
+		case which == "WL":
+			times.WriteLogStartTime = time.Now()
 	}
 }
 
@@ -125,4 +134,3 @@ func electionValuesCalc(values map[int]time.Duration) (mean float64, stdDev floa
 	}
 	return mean, stdDev
 }
-	

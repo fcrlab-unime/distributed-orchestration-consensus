@@ -222,8 +222,11 @@ func (cm *ConsensusModule) Stop() {
 // persistToStorage saves all of CM's persistent state in cm.storage.
 // Expects cm.Mu to be locked.
 
-func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
+func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 	
+	if os.Getenv("TIME") == "1" {
+		cm.server.Times[index[0]].SetStartTime("WL")
+	}
 	for _, log := range logs {
 		termData := make(map[string]interface{})
 		termData["Term"] = strconv.Itoa(log.Term)
@@ -234,6 +237,9 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 		termData["Timestamp"] = log.Timestamp
 
 		cm.storage.Set(termData, cm.CheckCMId(log.LeaderId))
+		if os.Getenv("TIME") == "1" && cm.CheckCMId(log.LeaderId) {
+			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "WL")
+		}
 
 		if log.Term >= cm.currentTerm {
 			leaderId := log.LeaderId
@@ -661,8 +667,10 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							cm.Mu.Unlock()
 							if os.Getenv("TIME") == "1" && index != nil {
 								cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VCNVE")
+								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1], index[0])
+							} else {
+								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							}
-							cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAECommitChan <- struct{}{}
 						} else {
