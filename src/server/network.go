@@ -91,6 +91,9 @@ func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 		if !notClosed {
 			return
 		}
+		if addr.String() == "172.16.5.22" && addr.String() == "172.16.5.49" {
+			continue
+		}
 		defaultGateway := GetDefaultGateway()
 		tmpId := 0
 		connect = 1

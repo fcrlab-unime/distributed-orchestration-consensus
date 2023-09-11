@@ -62,7 +62,7 @@ func NewTimesStruct(serverId int) (*Times) {
 	return times
 }
 
-func (times *Times) SetDurationAndWrite(index int, which string, netowrkIndex ...int) {
+func (times *Times) SetDurationAndWrite(index int, which string) {
 	mess := strconv.Itoa(index)
 	switch {
 		case which == "RE":
@@ -131,6 +131,9 @@ func electionValuesCalc(values map[int]time.Duration) (mean float64, stdDev floa
 	mean, stdDev = stat.MeanStdDev(tmp, nil)
 	if math.IsNaN(stdDev) {
 		stdDev = 0
+	}
+	if math.IsNaN(mean) {
+		mean = 0
 	}
 	return mean, stdDev
 }

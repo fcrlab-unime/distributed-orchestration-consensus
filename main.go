@@ -11,6 +11,7 @@ import (
 	"test"
 	"time"
 	"golang.org/x/exp/slices"
+	ng "namesgenerator"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -97,28 +98,26 @@ func waitSubmit(server *s.Server) {
 
 func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	defer conn.Close()
-	for {
-		buf := make([]byte, 4096) 
-		n, err := conn.Read(buf[0:])
-	
-		if err != nil {
-			return
-		}
+	buf := make([]byte, 4096) 
+	n, err := conn.Read(buf[0:])
 
-		services, err := parseMessage(string(buf[0:n]))
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-		}
-		//TODO: da modificare
-		for _, service := range services {
-			command := s.NewService(service, server)
-			if err == nil {
-				if os.Getenv("TIME") == "1" {
-					server.Times[index[0]].SetDurationAndWrite(index[0], "RE")
-					server.Submit(command, index[0])
-				} else {
-					server.Submit(command)
-				}
+	if err != nil {
+		return
+	}
+
+	services, err := parseMessage(string(buf[0:n]))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
+	//TODO: da modificare
+	for _, service := range services {
+		command := s.NewService(service, server)
+		if err == nil {
+			if os.Getenv("TIME") == "1" {
+				server.Times[index[0]].SetDurationAndWrite(index[0], "RE")
+				server.Submit(command, index[0])
+			} else {
+				server.Submit(command)
 			}
 		}
 	}
@@ -179,9 +178,9 @@ func parseMessage(message string) ([]string, error) {
 	}
 
 	var servicesList []string
-	for k, v := range parseYml["services"].(map[string]interface{}) {
+	for _, v := range parseYml["services"].(map[string]interface{}) {
 		service := map[string]interface{}{
-			"services": map[string]interface{}{k: v},
+			"services": map[string]interface{}{ng.GetRandomName(1): v},
 			"version": parseYml["version"],
 		}
 		if _, ok := v.(map[string]interface{})["networks"]; ok {

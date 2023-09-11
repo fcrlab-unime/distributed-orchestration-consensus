@@ -763,14 +763,10 @@ func (cm *ConsensusModule) Pause() {
 
 func (cm *ConsensusModule) Resume(index ...int) {
 	cm.Mu.Lock()
-	if cm.state != Leader {
-		if os.Getenv("TIME") == "1" {
-			cm.StartElection(index[0])
-		} else {
-			cm.StartElection()
-		}
+	if os.Getenv("TIME") == "1" {
+		cm.StartElection(index[0])
 	} else {
-		cm.startLeader()
+		cm.StartElection()
 	}
 	cm.Mu.Unlock()
 }
