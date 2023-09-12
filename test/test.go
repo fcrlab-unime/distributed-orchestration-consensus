@@ -100,6 +100,10 @@ func (times *Times) SetDurationAndWrite(index int, which string) {
 		case which == "WL":
 			times.WriteLogDuration = time.Since(times.WriteLogStartTime)
 			mess += ",WriteLog," + strconv.FormatInt(times.WriteLogDuration.Microseconds(), 10) + "\n"
+		case which == "TR":
+			mess += ",TransfertReq," + strconv.FormatInt(time.Since(times.RequestElabStartTime).Microseconds(), 10) + "\n"
+		case which == "TRE":
+			mess += ",TransfertReq,0" + "\n"
 	}
 	times.Mu.Lock()
 	times.File.WriteString(mess)

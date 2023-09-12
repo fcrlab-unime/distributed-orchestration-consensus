@@ -249,14 +249,23 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 				// TODO: Inserire esecuzione da parte del leader
 				fmt.Println("Esecuzione da parte del leader")
 				go Exec(termData["Command"].(Service).ServiceID)
+				if os.Getenv("TIME") == "1" {
+					cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TRE")
+				}
 			} else if isLeader {
 				conn, err := cm.server.fileSocket.Accept()
 				if err != nil {
 					fmt.Printf("Error: %v\n", err)
 				}
-				go cm.SendService(conn, termData)
+				if os.Getenv("TIME") == "1" {
+					go cm.SendService(conn, termData, index[0])
+				} else {
+					go cm.SendService(conn, termData)
+				}
 			} else if isChosen {
-				go cm.ReceiveService(termData)
+				if os.Getenv("TIME") == "1" {
+					go cm.ReceiveService(termData)
+				}
 			}
 		}
 	}
@@ -818,7 +827,7 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 	return lowestPeers[rand.Intn(len(lowestPeers))]
 }
 
-func (cm *ConsensusModule) SendService(conn net.Conn, args map[string]interface{}) {
+func (cm *ConsensusModule) SendService(conn net.Conn, args map[string]interface{}, index ...int) {
 
 	bufSize := 4096
 	message, err := cm.Receive(conn, bufSize, "")
@@ -840,12 +849,17 @@ func (cm *ConsensusModule) SendService(conn net.Conn, args map[string]interface{
 	}
 
 	fmt.Printf("Inviato %s a %s\n", message, conn.RemoteAddr().String())
+	if (os.Getenv("TIME") == "1") {
+		cm.Receive(conn, bufSize, "")
+		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TR")
+	}
 
 	conn.Close()
 }
 
 func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 
+	transReqStartTime := time.Now()
 	leaderId, _ := strconv.Atoi(args["Leader"].(string))
 	leaderIp := GetServerIpFromId(leaderId)
 	conn, err := net.DialTimeout("tcp", leaderIp.String() + ":" + os.Getenv("SERVICE_PORT"), 10 * time.Second)
@@ -872,10 +886,17 @@ func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
 	service := mess
 
 	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID, []byte(service), 0600); err != nil {
-		panic(err)
+		fmt.Printf("Error finding service: %v\n", err)
 	}
 
+	if os.Getenv("TIME") == "1" {
+		transReqDuration := time.Since(transReqStartTime)
+		if err := cm.Send(fmt.Sprintf("%s", transReqDuration), conn, bufSize); err != nil {
+			fmt.Printf("Error sending time: %v\n", err)
+		}
+	}
 	fmt.Printf("Ricevuto %s da %s\n", args["Command"].(Service).ServiceID, args["Leader"].(string))
+
 
 	go Exec(args["Command"].(Service).ServiceID)
 
