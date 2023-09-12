@@ -103,6 +103,7 @@ type ConsensusModule struct {
 	ResumeChan chan interface{}
 	SubmitChan chan interface{}
 	StartedChan chan interface{}
+	CPUChan chan int
 
 	// storage is used to persist state.
 	storage st.Storage
@@ -158,6 +159,7 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.ResumeChan = make(chan interface{}, 2)
 	cm.SubmitChan = make(chan interface{}, 1)
 	cm.StartedChan = make(chan interface{}, 1)
+	cm.CPUChan = make(chan int, 1)
 	cm.newCommitReadyChan = make(chan struct{})
 	cm.chosenChan = make(chan interface{}, 1)
 	cm.triggerAEChan = make(chan struct{}, 1)
@@ -239,6 +241,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 		cm.storage.Set(termData, cm.CheckCMId(log.LeaderId))
 		if os.Getenv("TIME") == "1" && cm.CheckCMId(log.LeaderId) {
 			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "WL")
+			cm.CPUChan <- index[0]
 		}
 
 		if log.Term >= cm.currentTerm {
@@ -779,12 +782,22 @@ func (cm *ConsensusModule) Resume(index ...int) {
 }
 
 func (cm *ConsensusModule) MonitorLoad() {
+	load, cpu := l.GetLoadLevel()
+	startLoad, maxLoad := cpu, cpu
 	for {
-		load := l.GetLoadLevel()
-		cm.Mu.Lock()
-		cm.loadLevel = load
-		cm.Mu.Unlock()
-		time.Sleep(200 * time.Millisecond)
+		select {
+			case t := <-cm.CPUChan:
+				cm.server.Times[t].SetDurationAndWrite(t, "CPU", maxLoad - startLoad)
+			default:
+				if os.Getenv("TIME") == "1" && cpu > maxLoad {
+					maxLoad = cpu
+				}
+				cm.Mu.Lock()
+				cm.loadLevel = load
+				cm.Mu.Unlock()
+				time.Sleep(500 * time.Millisecond)
+		}
+			load, cpu = l.GetLoadLevel()
 	}
 }
 

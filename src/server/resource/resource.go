@@ -10,7 +10,7 @@ import (
 )
 
 func getCPUPercent() float64 {
-	perc, err :=  cpu.Percent(200 * time.Millisecond, false)
+	perc, err :=  cpu.Percent(500 * time.Millisecond, false)
 	if err != nil {
 		return 0
 	}
@@ -60,7 +60,7 @@ func WeightedSum(a float64, b float64, weightA float64, weightB float64) float64
 	return (a * weightA + b * weightB) / (weightA + weightB)
 }
 
-func GetLoadLevel() int {
+func GetLoadLevel() (int, float64) {
 	loadLevel := 0
 	cpu, mem := getResources()
 	sum := int(WeightedSum(cpu, mem, 0.5, 0.5) / 10)
@@ -72,5 +72,5 @@ func GetLoadLevel() int {
 		loadLevel = sum
 	}
 
-	return loadLevel
+	return loadLevel, cpu
 }
