@@ -1,36 +1,20 @@
 package load
 
 import (
+	"github.com/shirou/gopsutil/cpu"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
-	"os/exec"
+	"time"
 )
 
 func getCPUPercent() float64 {
-	c1 := exec.Command("vmstat")
-	c2 := exec.Command("tail", "-1")
-	c3 := exec.Command("awk", "{print $15}")
-
-	c2.Stdin, _ = c1.StdoutPipe()
-	c3.Stdin, _ = c2.StdoutPipe()
-	
-	c1.Start()
-	c2.Start()
-	res, err := c3.Output()
-
-	if err == nil {
-		percent, err := strconv.ParseFloat(string(res[:len(res)-1]), 64)
-		percent = 100 - percent
-		if err == nil {
-			return percent
-		} else {
-			panic(err)
-		}
-	} else {
-		panic(err)
+	perc, err :=  cpu.Percent(200 * time.Millisecond, false)
+	if err != nil {
+		return 0
 	}
+	return perc[0]
 }
 
 func getMem() (total float64, free float64) {

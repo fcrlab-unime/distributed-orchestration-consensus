@@ -303,7 +303,6 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	if cm.state == Dead {
 		return nil
 	}
-	cm.monitorLoad()
 	lastLogIndex, lastLogTerm := cm.lastLogIndexAndTerm()
 	cm.Dlog("RequestVote: %+v [currentTerm=%d, votedFor=%d, log index/term=(%d, %d)]", args, cm.currentTerm, cm.votedFor, lastLogIndex, lastLogTerm)
 
@@ -467,7 +466,6 @@ func (cm *ConsensusModule) StartElection(index ...int) {
 	votesReceived := 1
 
 	// Send RequestVote RPCs to all other servers concurrently.
-	cm.monitorLoad()
 	cm.loadLevelMap[cm.id] = cm.loadLevel
 	for t, peerId := range cm.peerIds {
 		go func(peerId int, t int) {
@@ -780,12 +778,14 @@ func (cm *ConsensusModule) Resume(index ...int) {
 	cm.Mu.Unlock()
 }
 
-func (cm *ConsensusModule) monitorLoad() {
-	if cm.loadLevel == -1 {
-		cm.StartedChan <- struct{}{}
-		exec.Command("pkill", "bash").Run()
+func (cm *ConsensusModule) MonitorLoad() {
+	for {
+		load := l.GetLoadLevel()
+		cm.Mu.Lock()
+		cm.loadLevel = load
+		cm.Mu.Unlock()
+		time.Sleep(200 * time.Millisecond)
 	}
-	cm.loadLevel = l.GetLoadLevel()
 }
 
 func (cm *ConsensusModule) DisconnectPeer(peerId int) {

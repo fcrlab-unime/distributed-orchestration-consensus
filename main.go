@@ -67,6 +67,7 @@ func startServer() *s.Server {
 	wg.Wait()
 
 	// Starts checking for new peers.
+	go server.GetConsensusModule().MonitorLoad()
 	go s.CheckNewPeers(server, &peers)
 
 	return server
