@@ -103,8 +103,9 @@ type ConsensusModule struct {
 	ResumeChan chan interface{}
 	SubmitChan chan interface{}
 	StartedChan chan interface{}
-	CPUChan chan int
+	CPUChan chan interface{}
 
+	StartTime time.Time
 	// storage is used to persist state.
 	storage st.Storage
 
@@ -159,7 +160,8 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.ResumeChan = make(chan interface{}, 2)
 	cm.SubmitChan = make(chan interface{}, 1)
 	cm.StartedChan = make(chan interface{}, 1)
-	cm.CPUChan = make(chan int, 1)
+	cm.CPUChan = make(chan interface{}, 1)
+	cm.StartTime = time.Now()
 	cm.newCommitReadyChan = make(chan struct{})
 	cm.chosenChan = make(chan interface{}, 1)
 	cm.triggerAEChan = make(chan struct{}, 1)
@@ -195,7 +197,7 @@ func (cm *ConsensusModule) Submit(command *Service, index ...int) {
 	if cm.state == Leader {
 		chosenId := cm.minLoadLevelMap()
 		if os.Getenv("TIME") == "1" {
-			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "CP")
+			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "CP", cm.StartTime)
 			cm.server.Times[index[0]].SetStartTime("VP")
 		}
 		newLog := cm.NewLog(command, chosenId)
@@ -240,8 +242,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 
 		cm.storage.Set(termData, cm.CheckCMId(log.LeaderId))
 		if os.Getenv("TIME") == "1" && cm.CheckCMId(log.LeaderId) {
-			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "WL")
-			cm.CPUChan <- index[0]
+			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "WL", cm.StartTime)
 		}
 
 		if log.Term >= cm.currentTerm {
@@ -253,7 +254,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 				fmt.Println("Esecuzione da parte del leader")
 				go Exec(termData["Command"].(Service).ServiceID)
 				if os.Getenv("TIME") == "1" {
-					cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TRE")
+					cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TRE", cm.StartTime)
 				}
 			} else if isLeader {
 				conn, err := cm.server.fileSocket.Accept()
@@ -603,7 +604,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 	savedCurrentTerm := cm.currentTerm
 	cm.Mu.Unlock()
 	if os.Getenv("TIME") == "1" && index != nil {
-		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VP")
+		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VP", cm.StartTime)
 	}
 	for t, peerId := range cm.peerIds {
 		go func(peerId int, t int) {
@@ -676,7 +677,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							// leader's clients, and notify followers by sending them AEs.
 							cm.Mu.Unlock()
 							if os.Getenv("TIME") == "1" && index != nil {
-								cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VCNVE")
+								cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VCNVE", cm.StartTime)
 								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1], index[0])
 							} else {
 								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
@@ -782,22 +783,37 @@ func (cm *ConsensusModule) Resume(index ...int) {
 }
 
 func (cm *ConsensusModule) MonitorLoad() {
-	load, cpu := l.GetLoadLevel()
-	startLoad, maxLoad := cpu, cpu
+	var cpu float64
+	var load int
 	for {
+		cm.Mu.Lock()
+		load, cpu = l.GetLoadLevel()
+		cm.Mu.Unlock()
 		select {
-			case t := <-cm.CPUChan:
-				cm.server.Times[t].SetDurationAndWrite(t, "CPU", maxLoad - startLoad)
+			case <-cm.CPUChan:
+				go cm.MonitorForTest(&cpu)
 			default:
-				if os.Getenv("TIME") == "1" && cpu > maxLoad {
-					maxLoad = cpu
-				}
 				cm.Mu.Lock()
 				cm.loadLevel = load
 				cm.Mu.Unlock()
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(20 * time.Millisecond)
 		}
-			load, cpu = l.GetLoadLevel()
+	}
+}
+
+func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
+	timer := time.NewTimer(4 * time.Millisecond)
+	f, err := os.OpenFile("/log/cpu" + strconv.Itoa(cm.id) + ".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	for {
+		<-timer.C
+		timer.Reset(4 * time.Millisecond)
+		when := time.Since(cm.StartTime)
+		cm.Mu.Lock()
+		f.WriteString(fmt.Sprintf("%v,%.2f\n", when, *cpu))
+		cm.Mu.Unlock()
 	}
 }
 
@@ -864,7 +880,7 @@ func (cm *ConsensusModule) SendService(conn net.Conn, args map[string]interface{
 	fmt.Printf("Inviato %s a %s\n", message, conn.RemoteAddr().String())
 	if (os.Getenv("TIME") == "1") {
 		cm.Receive(conn, bufSize, "")
-		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TR")
+		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TR", cm.StartTime)
 	}
 
 	conn.Close()

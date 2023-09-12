@@ -10,7 +10,7 @@ import (
 )
 
 func getCPUPercent() float64 {
-	perc, err :=  cpu.Percent(500 * time.Millisecond, false)
+	perc, err :=  cpu.Percent(2 * time.Millisecond, false)
 	if err != nil {
 		return 0
 	}

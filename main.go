@@ -86,6 +86,9 @@ func waitSubmit(server *s.Server) {
 		if err != nil {
 			panic(err)
 		}
+		if os.Getenv("TIME") == "1" && index == 1 {
+			server.GetConsensusModule().CPUChan <- struct{}{}
+		}
 		if os.Getenv("TIME") == "1" {
 			server.Times[index] = test.NewTimesStruct(server.GetId())
 			server.Times[index].SetStartTime("RE")
@@ -115,7 +118,7 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		command := s.NewService(service, server)
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
-				server.Times[index[0]].SetDurationAndWrite(index[0], "RE")
+				server.Times[index[0]].SetDurationAndWrite(index[0], "RE", server.GetConsensusModule().StartTime)
 				server.Submit(command, index[0])
 			} else {
 				server.Submit(command)

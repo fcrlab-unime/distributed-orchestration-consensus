@@ -62,8 +62,8 @@ func NewTimesStruct(serverId int) (*Times) {
 	return times
 }
 
-func (times *Times) SetDurationAndWrite(index int, which string, cpu ...float64) {
-	mess := strconv.Itoa(index)
+func (times *Times) SetDurationAndWrite(index int, which string, start time.Time) {
+	mess := strconv.Itoa(index) + "," + time.Since(start).String()
 	times.Mu.Lock()
 	defer times.Mu.Unlock()
 	switch {
@@ -78,9 +78,9 @@ func (times *Times) SetDurationAndWrite(index int, which string, cpu ...float64)
 			meanVote, stdDevVote := electionValuesCalc(times.VoteElectionDurations)
 
 			mess += ",ElectionNetworkMean," + strconv.FormatInt(int64(meanNet), 10) + "\n" +
-				strconv.Itoa(index) + ",ElectionNetworkStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
-				strconv.Itoa(index) + ",VoteElectionMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
-				strconv.Itoa(index) + ",VoteElectionStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
+				mess + ",ElectionNetworkStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
+				mess + ",VoteElectionMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
+				mess + ",VoteElectionStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
 		case which == "CP":
 			times.ChoosingPhaseDuration = time.Since(times.ChoosingPhaseStartTime)
 			mess += ",ChoosingPhase," + strconv.FormatInt(times.ChoosingPhaseDuration.Microseconds(), 10) + "\n"
@@ -92,9 +92,9 @@ func (times *Times) SetDurationAndWrite(index int, which string, cpu ...float64)
 			meanVote, stdDevVote := electionValuesCalc(times.VoteConsElabDurations)
 
 			mess += ",VoteConsNetMean," + strconv.FormatInt(int64(meanNet-meanVote), 10) + "\n" +
-				strconv.Itoa(index) + ",VoteConsNetStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
-				strconv.Itoa(index) + ",VoteConsElabMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
-				strconv.Itoa(index) + ",VoteConsElabStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
+				mess + ",VoteConsNetStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
+				mess + ",VoteConsElabMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
+				mess + ",VoteConsElabStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
 		case which == "WL":
 			times.WriteLogDuration = time.Since(times.WriteLogStartTime)
 			mess += ",WriteLog," + strconv.FormatInt(times.WriteLogDuration.Microseconds(), 10) + "\n"
@@ -102,8 +102,6 @@ func (times *Times) SetDurationAndWrite(index int, which string, cpu ...float64)
 			mess += ",TransfertReq," + strconv.FormatInt(time.Since(times.RequestElabStartTime).Microseconds(), 10) + "\n"
 		case which == "TRE":
 			mess += ",TransfertReq,0" + "\n"
-		case which == "CPU":
-			mess += ",MaxCPUIncrement," + strconv.FormatFloat(cpu[0], 'f', 1, 64) + "\n"
 	}
 	times.File.WriteString(mess)
 }
