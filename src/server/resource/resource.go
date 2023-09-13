@@ -10,11 +10,15 @@ import (
 )
 
 func getCPUPercent() float64 {
-	perc, err :=  cpu.Percent(2 * time.Millisecond, false)
+	perc, err :=  cpu.Percent(8 * time.Millisecond, true)
+	sum := 0.0
+	for _,core := range perc {
+		sum += core
+	}
 	if err != nil {
 		return 0
 	}
-	return perc[0]
+	return sum / float64(len(perc))
 }
 
 func getMem() (total float64, free float64) {

@@ -241,7 +241,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 		termData["Timestamp"] = log.Timestamp
 
 		cm.storage.Set(termData, cm.CheckCMId(log.LeaderId))
-		if os.Getenv("TIME") == "1" && cm.CheckCMId(log.LeaderId) {
+		if os.Getenv("TIME") == "1" && cm.CheckCMId(log.LeaderId) && index != nil {
 			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "WL", cm.StartTime)
 		}
 
@@ -253,7 +253,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 				// TODO: Inserire esecuzione da parte del leader
 				fmt.Println("Esecuzione da parte del leader")
 				go Exec(termData["Command"].(Service).ServiceID)
-				if os.Getenv("TIME") == "1" {
+				if os.Getenv("TIME") == "1" && index != nil {
 					cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TRE", cm.StartTime)
 				}
 			} else if isLeader {
@@ -802,14 +802,14 @@ func (cm *ConsensusModule) MonitorLoad() {
 }
 
 func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
-	timer := time.NewTimer(4 * time.Millisecond)
+	timer := time.NewTimer(16 * time.Millisecond)
 	f, err := os.OpenFile("/log/cpu" + strconv.Itoa(cm.id) + ".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		panic(err)
 	}
 	for {
 		<-timer.C
-		timer.Reset(4 * time.Millisecond)
+		timer.Reset(16 * time.Millisecond)
 		when := time.Since(cm.StartTime)
 		cm.Mu.Lock()
 		f.WriteString(fmt.Sprintf("%v,%.2f\n", when, *cpu))
