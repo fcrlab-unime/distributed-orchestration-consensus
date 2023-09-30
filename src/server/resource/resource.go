@@ -10,22 +10,30 @@ import (
 )
 
 func getCPUPercent() float64 {
-	perc, err :=  cpu.Percent(8 * time.Millisecond, true)
+	// Gets per-core CPU usage in 5 ms
+	perc, err :=  cpu.Percent(5 * time.Millisecond, true)
 	sum := 0.0
+	
+	// Sums all the usages
 	for _,core := range perc {
 		sum += core
 	}
 	if err != nil {
 		return 0
 	}
+	
+	// Returns the average
 	return sum / float64(len(perc))
 }
 
 func getMem() (total float64, free float64) {
+	// Reads the /proc/meminfo file
 	contents, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return 
 	}
+
+	// Parses the file
 	lines := strings.Split(string(contents), "\n")
 	for _, line := range lines {
 		fields := strings.Split(line, ":")
@@ -48,6 +56,8 @@ func getMem() (total float64, free float64) {
 			continue
 		}
 	}
+
+	// Returns the total and free memory
 	return total, free
 }
 

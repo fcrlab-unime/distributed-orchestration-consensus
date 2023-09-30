@@ -31,7 +31,7 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 	return ip, "25"
 }
 
-func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, started chan interface{}, check bool) (newPeers []net.Addr) {
+func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, check bool) (newPeers []net.Addr) {
 
 	// check is true if we want to get new peers in the network
 	if check {
@@ -44,22 +44,16 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, s
 		newReader := bufio.NewReader(newPipe)
 		exec.Command("bash", "/home/raft/scripts/get_ip.sh", "ping", serverIp.String(), subnetMask).Start()
 		for {
-			select {
-				case <-started:
-					close(*peerChan)
-					return nil
-				default:
-					line, _, err := newReader.ReadLine()
-					if err != nil {
-						time.Sleep(1 * time.Second)
-						continue
-					}
-					nline := strings.TrimSuffix(string(line), "\n")
-					if os.Getenv("DEBUG") == "1" {
-						fmt.Println(nline)
-					}
-					*peerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
+			line, _, err := newReader.ReadLine()
+			if err != nil {
+				time.Sleep(1 * time.Second)
+				continue
 			}
+			nline := strings.TrimSuffix(string(line), "\n")
+			if os.Getenv("DEBUG") == "1" {
+				fmt.Println(nline)
+			}
+			*peerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
 		}
 	} else {
 		// If check is false, it will get all peers in the network and returns them
@@ -84,7 +78,7 @@ func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 	peerChan := make(chan net.Addr, 100)
 	ip, mask:= GetNetworkInfo()
 	var connect int
-	go GetPeersIp(ip, mask, &peerChan, server.cm.StartedChan, true)
+	go GetPeersIp(ip, mask, &peerChan, true)
 
 	for {
 		addr, notClosed := <-peerChan

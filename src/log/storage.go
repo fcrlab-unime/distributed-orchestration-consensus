@@ -5,22 +5,12 @@ package storage
 import (
 	"encoding/json"
 	"os"
-	"sort"
 	"sync"
-	t "time"
 )
 
 // Storage is an interface implemented by stable storage providers.
 type Storage interface {
 	Set(value map[string]interface{}, toWrite bool)
-
-	Get(key string) (interface{}, bool)
-
-	// HasData returns true iff any Sets were made on this Storage.
-	HasData() bool
-
-	// GetLog returns the log of all Sets made on this Storage.
-	GetLog() map[string]map[string]interface{}
 }
 
 // MapStorage is a simple in-memory implementation of Storage for testing.
@@ -55,23 +45,6 @@ func NewMapStorage() *MapStorage {
 
 }
 
-func (ms *MapStorage) Get(key string) (interface{}, bool) {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-	times := []t.Time{}
-	terms := map[t.Time]string{}
-	for _, v := range ms.m {
-		time, _ := t.Parse("2006-01-02 15:04:05.0000", v["Timestamp"].(string))
-		times = append(times, time)
-		terms[time] = v["Term"].(string)
-	}
-	sort.Slice(times, func(i, j int) bool {
-		return times[i].Before(times[j])
-	})
-	v, found := terms[times[len(times)-1]]
-	return v, found
-}
-
 func (ms *MapStorage) Set(value map[string]interface{}, toWrite bool) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -90,16 +63,4 @@ func (ms *MapStorage) Set(value map[string]interface{}, toWrite bool) {
 func (ms *MapStorage) WriteLog() {
 	jsonWrite, _ := json.MarshalIndent(ms.m, "", "  ")
 	os.WriteFile(ms.f, jsonWrite, 0600)
-}
-
-func (ms *MapStorage) HasData() bool {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-	return len(ms.m) > 0
-}
-
-func (ms *MapStorage) GetLog() map[string]map[string]interface{} {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-	return ms.m
 }

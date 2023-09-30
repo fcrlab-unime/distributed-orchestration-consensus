@@ -15,8 +15,8 @@ COPY . /home/raft
 
 WORKDIR /home/raft
 RUN mkdir services/
+RUN mkdir /log
 ENV RPC_PORT=4000
-ENV SERVICE_PORT=4001
 ENV GATEWAY_PORT=9093
 ENV DEBUG=0
 ENV TIME=0

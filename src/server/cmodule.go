@@ -6,12 +6,11 @@ package server
 
 import (
 	"crypto/sha256"
-	"os/exec"
 	"fmt"
 	"log"
 	"math/rand"
-	"net"
 	"os"
+	"os/exec"
 	"reflect"
 	l "server/resource"
 
@@ -98,12 +97,11 @@ type ConsensusModule struct {
 	// startSendingAEsChan is used to start sending AEs
 	stopSendingAEsChan chan interface{}
 
-	// ResumeChan is used to resume the election
-	// SubmitChan is used to submit the command
-	ResumeChan chan interface{}
-	SubmitChan chan interface{}
-	StartedChan chan interface{}
-	CPUChan chan interface{}
+	// ElectionChan is used at the end of the election
+	// VotingChan is used at the end of the voting phase
+	ElectionChan chan interface{}
+	VotingChan   chan interface{}
+	CPUChan      chan interface{}
 
 	StartTime time.Time
 	// storage is used to persist state.
@@ -157,9 +155,8 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.storage = storage
 	cm.loadLevelMap = make(map[int]int)
 	cm.commitChan = commitChan
-	cm.ResumeChan = make(chan interface{}, 2)
-	cm.SubmitChan = make(chan interface{}, 1)
-	cm.StartedChan = make(chan interface{}, 1)
+	cm.ElectionChan = make(chan interface{}, 1)
+	cm.VotingChan = make(chan interface{}, 1)
 	cm.CPUChan = make(chan interface{}, 1)
 	cm.StartTime = time.Now()
 	cm.newCommitReadyChan = make(chan struct{})
@@ -186,19 +183,19 @@ func (cm *ConsensusModule) Report() (id int, term int, isLeader bool) {
 	return cm.id, cm.currentTerm, cm.state == Leader
 }
 
-// Submit submits a new command to the CM. This function doesn't block; clients
+// Voting submits a new command to the CM. This function doesn't block; clients
 // read the commit channel passed in the constructor to be notified of new
 // committed entries. It returns true iff this CM is the leader - in which case
 // the command is accepted. If false is returned, the client will have to find
 // a different CM to submit this command to.
-func (cm *ConsensusModule) Submit(command *Service, index ...int) {
+func (cm *ConsensusModule) Voting(command *Service, index ...int) {
 	cm.Mu.Lock()
-	cm.Dlog("Submit received: %v", command)
+	cm.Dlog("Voting received: %v", command)
 	if cm.state == Leader {
 		chosenId := cm.minLoadLevelMap()
 		if os.Getenv("TIME") == "1" {
 			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "CP", cm.StartTime)
-			cm.server.Times[index[0]].SetStartTime("VP")
+		//	cm.server.Times[index[0]].SetStartTime("VP")
 		}
 		newLog := cm.NewLog(command, chosenId)
 		cm.log = append(cm.log, newLog)
@@ -209,7 +206,7 @@ func (cm *ConsensusModule) Submit(command *Service, index ...int) {
 	} else {
 		cm.Mu.Unlock()
 	}
-	cm.SubmitChan <- struct{}{}
+	cm.VotingChan <- struct{}{}
 }
 
 // Stop stops this CM, cleaning up its state. This method returns quickly, but
@@ -221,6 +218,21 @@ func (cm *ConsensusModule) Stop() {
 	cm.state = Dead
 	cm.Dlog("becomes Dead")
 	close(cm.newCommitReadyChan)
+}
+
+type DeployArgs struct {
+	Id string
+	Service []byte
+}
+
+type DeployReply struct {}
+
+func (cm *ConsensusModule) Deploy(args DeployArgs, reply *DeployReply) error {
+	if err := os.WriteFile("services/" + args.Id, args.Service, 0644); err != nil {
+		return err
+	}
+	go Exec(args.Id)
+	return nil
 }
 
 // persistToStorage saves all of CM's persistent state in cm.storage.
@@ -249,26 +261,26 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 			leaderId := log.LeaderId
 			chosenId := log.ChosenId
 			isLeader, isChosen := cm.CheckCMId(leaderId), cm.CheckCMId(chosenId)
-			if isLeader && isChosen {
-				// TODO: Inserire esecuzione da parte del leader
+			if isLeader {
+				if isChosen {
 				fmt.Println("Esecuzione da parte del leader")
 				go Exec(termData["Command"].(Service).ServiceID)
 				if os.Getenv("TIME") == "1" && index != nil {
 					cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TRE", cm.StartTime)
 				}
-			} else if isLeader {
-				conn, err := cm.server.fileSocket.Accept()
-				if err != nil {
-					fmt.Printf("Error: %v\n", err)
+			} else {
+				file, _ := os.ReadFile("services/" + termData["Command"].(Service).ServiceID)
+				args := DeployArgs{
+					Id: termData["Command"].(Service).ServiceID,
+					Service: file,
 				}
-				if os.Getenv("TIME") == "1" {
-					go cm.SendService(conn, termData, index[0])
-				} else {
-					go cm.SendService(conn, termData)
+				var reply DeployReply
+				if os.Getenv("TIME") == "1" && index != nil {
+					cm.server.Times[index[0]].SetStartTime("TR")
 				}
-			} else if isChosen {
-				if os.Getenv("TIME") == "1" {
-					go cm.ReceiveService(termData)
+				if err := cm.server.Call(chosenId, "ConsensusModule.Deploy", args, &reply); err == nil && os.Getenv("TIME") == "1" && index != nil {
+						cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TR", cm.StartTime)
+					}
 				}
 			}
 		}
@@ -461,7 +473,9 @@ func runVoteDelay(loadLevel int) {
 
 // startElection starts a new election with this CM as a candidate.
 // Expects cm.Mu to be locked.
-func (cm *ConsensusModule) StartElection(index ...int) {
+func (cm *ConsensusModule) Election(index ...int) {
+	cm.Mu.Lock()
+	defer cm.Mu.Unlock()
 	cm.state = Candidate
 	cm.currentTerm += 1
 	savedCurrentTerm := cm.currentTerm
@@ -493,8 +507,10 @@ func (cm *ConsensusModule) StartElection(index ...int) {
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
 				cm.Mu.Lock()
 				if os.Getenv("TIME") == "1" {
+					cm.server.Times[index[0]].Mu.Lock()
 					cm.server.Times[index[0]].ElectionNetworkDurations[t] = time.Since(cm.server.Times[index[0]].ElectionNetworkStartTimes[t])
 					cm.server.Times[index[0]].VoteElectionDurations[t] = reply.VoteElabTime
+					cm.server.Times[index[0]].Mu.Unlock()
 				}
 				cm.loadLevelMap[peerId] = reply.LoadLevel
 				defer cm.Mu.Unlock()
@@ -547,7 +563,7 @@ func (cm *ConsensusModule) becomeFollower(term int) {
 // Expects cm.Mu to be locked.
 func (cm *ConsensusModule) startLeader(index ...int) {
 	cm.state = Leader
-	cm.ResumeChan <- struct{}{}
+	cm.ElectionChan <- struct{}{}
 	for _, peerId := range cm.peerIds {
 		cm.nextIndex[peerId] = len(cm.log)
 		cm.matchIndex[peerId] = -1
@@ -558,36 +574,33 @@ func (cm *ConsensusModule) startLeader(index ...int) {
 	if os.Getenv("TIME") == "1" {
 		tmp = index
 	}
-	// This goroutine runs in the background and sends AEs to peers:
-	// * Whenever something is sent on triggerAEChan
-	// * ... Or every 50 ms, if no events occur on triggerAEChan
+	// This goroutine runs in the background and sends AEs to peers
+	// Whenever something is sent on triggerAEChan
 	go func(index []int) {
-		// Immediately send AEs to peers.
 		for {
 			select {	
-				case <-cm.stopSendingAEsChan:
+			case <-cm.stopSendingAEsChan:
+				return
+			case <-cm.triggerAEChan:
+				cm.Mu.Lock()
+				if cm.state != Leader {
+					cm.Mu.Unlock()
 					return
-				case <-cm.triggerAEChan:
-					// Reset timer for heartbeatTimeout.
-					cm.Mu.Lock()
-					if cm.state != Leader {
-						cm.Mu.Unlock()
-						return
-					}
-					cm.Mu.Unlock()
-					if os.Getenv("TIME") == "1" {
-						cm.leaderSendAEs(index[0])
-					} else {
-						cm.leaderSendAEs()
-					}
-				case <- cm.triggerAECommitChan:
-					cm.Mu.Lock()
-					if cm.state != Leader {
-						cm.Mu.Unlock()
-						return
-					}
-					cm.Mu.Unlock()
+				}
+				cm.Mu.Unlock()
+				if os.Getenv("TIME") == "1" {
+					cm.leaderSendAEs(index[0])
+				} else {
 					cm.leaderSendAEs()
+				}
+			case <-cm.triggerAECommitChan:
+				cm.Mu.Lock()
+				if cm.state != Leader {
+					cm.Mu.Unlock()
+					return
+				}
+				cm.Mu.Unlock()
+				cm.leaderSendAEs()
 			}
 		}
 	}(tmp)
@@ -603,9 +616,9 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 	}
 	savedCurrentTerm := cm.currentTerm
 	cm.Mu.Unlock()
-	if os.Getenv("TIME") == "1" && index != nil {
-		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VP", cm.StartTime)
-	}
+	//if os.Getenv("TIME") == "1" && index != nil {
+	//	cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VP", cm.StartTime)
+	//}
 	for t, peerId := range cm.peerIds {
 		go func(peerId int, t int) {
 			cm.Mu.Lock()
@@ -629,7 +642,6 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 				Entries:      entries,
 				LeaderCommit: cm.commitIndex,
 				ChosenId:     chosenId,
-
 			}
 			cm.Mu.Unlock()
 			cm.Dlog("sending AppendEntries to %v: ni=%d, args=%+v", peerId, ni, args)
@@ -640,8 +652,10 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
 				cm.Mu.Lock()
 				if os.Getenv("TIME") == "1" && index != nil {
+					cm.server.Times[index[0]].Mu.Lock()
 					cm.server.Times[index[0]].VoteConsNetDurations[t] = time.Since(cm.server.Times[index[0]].VoteConsNetStartTimes[t])
 					cm.server.Times[index[0]].VoteConsElabDurations[t] = reply.VoteElabTime
+					cm.server.Times[index[0]].Mu.Unlock()
 				}
 				if reply.Term > cm.currentTerm {
 					cm.Dlog("term out of date in heartbeat reply")
@@ -772,16 +786,6 @@ func (cm *ConsensusModule) Pause() {
 	cm.Mu.Unlock()
 }
 
-func (cm *ConsensusModule) Resume(index ...int) {
-	cm.Mu.Lock()
-	if os.Getenv("TIME") == "1" {
-		cm.StartElection(index[0])
-	} else {
-		cm.StartElection()
-	}
-	cm.Mu.Unlock()
-}
-
 func (cm *ConsensusModule) MonitorLoad() {
 	var cpu float64
 	var load int
@@ -802,14 +806,15 @@ func (cm *ConsensusModule) MonitorLoad() {
 }
 
 func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
-	timer := time.NewTimer(16 * time.Millisecond)
+	timer := time.NewTimer(8 * time.Millisecond)
 	f, err := os.OpenFile("/log/cpu" + strconv.Itoa(cm.id) + ".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f.WriteString("Times,Perc\n")
 	if err != nil {
 		panic(err)
 	}
 	for {
 		<-timer.C
-		timer.Reset(16 * time.Millisecond)
+		timer.Reset(8 * time.Millisecond)
 		when := time.Since(cm.StartTime)
 		cm.Mu.Lock()
 		f.WriteString(fmt.Sprintf("%v,%.2f\n", when, *cpu))
@@ -854,119 +859,6 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 		lastPeer = peerId
 	}
 	return lowestPeers[rand.Intn(len(lowestPeers))]
-}
-
-func (cm *ConsensusModule) SendService(conn net.Conn, args map[string]interface{}, index ...int) {
-
-	bufSize := 4096
-	message, err := cm.Receive(conn, bufSize, "")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("Ricevuta richiesta per %s da %s\n", message, conn.RemoteAddr().String())
-
-	if _, err := os.Stat("services/" + message); os.IsNotExist(err) {
-		cm.Send("Not found", conn, bufSize)
-		fmt.Println("services/" + message)
-		return
-	}
-
-	file, _ := os.ReadFile("services/" + message)
-
-	if err := cm.Send(string(file), conn, bufSize); err != nil {
-		panic(err)
-	}
-
-	fmt.Printf("Inviato %s a %s\n", message, conn.RemoteAddr().String())
-	if (os.Getenv("TIME") == "1") {
-		cm.Receive(conn, bufSize, "")
-		cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TR", cm.StartTime)
-	}
-
-	conn.Close()
-}
-
-func (cm *ConsensusModule) ReceiveService(args map[string]interface{}) {
-
-	transReqStartTime := time.Now()
-	leaderId, _ := strconv.Atoi(args["Leader"].(string))
-	leaderIp := GetServerIpFromId(leaderId)
-	conn, err := net.DialTimeout("tcp", leaderIp.String() + ":" + os.Getenv("SERVICE_PORT"), 10 * time.Second)
-	if err != nil {
-		panic(err)
-	}
-	defer conn.Close()
-
-	bufSize := 4096
-
-	if err := cm.Send(args["Command"].(Service).ServiceID, conn, bufSize); err != nil {
-		panic(err)
-	}
-	fmt.Printf("Inviata la richiesta per %s a %d\n", args["Command"].(Service).ServiceID, leaderId)
-	mess, err := cm.Receive(conn, bufSize, args["Command"].(Service).ServiceID)
-
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-	if mess == "Not found" {
-		fmt.Printf("Not found %s\n", args["Command"].(Service).ServiceID)
-		return
-	}
-	service := mess
-
-	if err := os.WriteFile("services/" + args["Command"].(Service).ServiceID, []byte(service), 0600); err != nil {
-		fmt.Printf("Error finding service: %v\n", err)
-	}
-
-	if os.Getenv("TIME") == "1" {
-		transReqDuration := time.Since(transReqStartTime)
-		if err := cm.Send(fmt.Sprintf("%s", transReqDuration), conn, bufSize); err != nil {
-			fmt.Printf("Error sending time: %v\n", err)
-		}
-	}
-	fmt.Printf("Ricevuto %s da %s\n", args["Command"].(Service).ServiceID, args["Leader"].(string))
-
-
-	go Exec(args["Command"].(Service).ServiceID)
-
-}
-
-func (cm *ConsensusModule) Send(mess string, conn net.Conn, bufSize int) error {
-
-	var buf []byte
-	for len(mess) > bufSize || len(mess + "%") > bufSize {
-		buf = []byte(mess[:bufSize])
-		if _, err := (conn).Write(buf); err != nil {
-			return err
-		}
-		mess = mess[bufSize:]
-	}
-
-	buf = []byte(mess+"%")
-	if _, err := (conn).Write(buf); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (cm *ConsensusModule) Receive(conn net.Conn, bufSize int, service string) (string, error) {
-
-	mess := ""
-	for {
-		buf := make([]byte, bufSize)
-		n, err := (conn).Read(buf)
-		if err != nil {
-			return "", err
-		}
-
-		mess += string(buf[:n])
-		if n < bufSize || (n == bufSize && string(buf[n-1]) == "%") {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return mess[:len(mess)-1], nil
 }
 
 func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry) {

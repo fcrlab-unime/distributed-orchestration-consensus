@@ -22,17 +22,18 @@ type Times struct {
 	// Time taken to choose the node to assign to the request.
 	ChoosingPhaseStartTime		time.Time
 	ChoosingPhaseDuration		time.Duration
-	// Time taken to prepare the voting.
-	VotingPrepStartTime			time.Time
-	VotingPrepDuration			time.Duration
 	// Network times for the consensus voting phase.
 	VoteConsNetStartTimes		map[int]time.Time
 	VoteConsNetDurations		map[int]time.Duration
 	// Elaboration times for the consensus voting phase.
 	VoteConsElabDurations		map[int]time.Duration
-
+	// Time taken to write the log.
 	WriteLogStartTime			time.Time
 	WriteLogDuration			time.Duration
+	// Time taken to transfer the request.
+	TransfertReqStartTime		time.Time
+	TransfertReqDuration		time.Duration
+
 	// Mutex for the times.
 	Mu sync.Mutex
 
@@ -52,8 +53,6 @@ func NewTimesStruct(serverId int) (*Times) {
 	times.VoteConsElabDurations = make(map[int]time.Duration)
 	times.ChoosingPhaseStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
 	times.ChoosingPhaseDuration = 0
-	times.VotingPrepStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
-	times.VotingPrepDuration = 0
 	times.WriteLogStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
 	times.WriteLogDuration = 0
 	times.Mu = sync.Mutex{}
@@ -74,32 +73,26 @@ func (times *Times) SetDurationAndWrite(index int, which string, start time.Time
 			for k, elem := range times.ElectionNetworkDurations {
 				times.ElectionNetworkDurations[k] = elem - times.VoteElectionDurations[k]
 			}
-			meanNet, stdDevNet := electionValuesCalc(times.ElectionNetworkDurations)
-			meanVote, stdDevVote := electionValuesCalc(times.VoteElectionDurations)
+			meanNet := electionValuesCalc(times.ElectionNetworkDurations)
+			meanVote := electionValuesCalc(times.VoteElectionDurations)
 
 			mess += ",ElectionNetworkMean," + strconv.FormatInt(int64(meanNet), 10) + "\n" +
-				mess + ",ElectionNetworkStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
-				mess + ",VoteElectionMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
-				mess + ",VoteElectionStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
+				mess + ",VoteElectionMean," + strconv.FormatInt(int64(meanVote), 10) + "\n"
 		case which == "CP":
 			times.ChoosingPhaseDuration = time.Since(times.ChoosingPhaseStartTime)
 			mess += ",ChoosingPhase," + strconv.FormatInt(times.ChoosingPhaseDuration.Microseconds(), 10) + "\n"
-		case which == "VP":
-			times.VotingPrepDuration = time.Since(times.VotingPrepStartTime)
-			mess += ",VotingPrep," + strconv.FormatInt(times.VotingPrepDuration.Microseconds(), 10) + "\n"
 		case which == "VCNVE":
-			meanNet, stdDevNet := electionValuesCalc(times.VoteConsNetDurations)
-			meanVote, stdDevVote := electionValuesCalc(times.VoteConsElabDurations)
+			meanNet := electionValuesCalc(times.VoteConsNetDurations)
+			meanVote := electionValuesCalc(times.VoteConsElabDurations)
 
 			mess += ",VoteConsNetMean," + strconv.FormatInt(int64(meanNet-meanVote), 10) + "\n" +
-				mess + ",VoteConsNetStdDev," + strconv.FormatInt(int64(stdDevNet), 10) + "\n" +
-				mess + ",VoteConsElabMean," + strconv.FormatInt(int64(meanVote), 10) + "\n" +
-				mess + ",VoteConsElabStdDev," + strconv.FormatInt(int64(stdDevVote), 10) + "\n"
+				mess + ",VoteConsElabMean," + strconv.FormatInt(int64(meanVote), 10) + "\n"
 		case which == "WL":
 			times.WriteLogDuration = time.Since(times.WriteLogStartTime)
 			mess += ",WriteLog," + strconv.FormatInt(times.WriteLogDuration.Microseconds(), 10) + "\n"
 		case which == "TR":
-			mess += ",TransfertReq," + strconv.FormatInt(time.Since(times.RequestElabStartTime).Microseconds(), 10) + "\n"
+			times.TransfertReqDuration = time.Since(times.TransfertReqStartTime)
+			mess += ",TransfertReq," + strconv.FormatInt(times.TransfertReqDuration.Microseconds(), 10) + "\n"
 		case which == "TRE":
 			mess += ",TransfertReq,0" + "\n"
 	}
@@ -107,6 +100,7 @@ func (times *Times) SetDurationAndWrite(index int, which string, start time.Time
 }
 
 func (times *Times) SetStartTime(which string, netowrkIndex ...int) {
+	times.Mu.Lock()
 	switch {
 		case which == "RE":
 			times.RequestElabStartTime = time.Now()
@@ -114,26 +108,24 @@ func (times *Times) SetStartTime(which string, netowrkIndex ...int) {
 			times.ElectionNetworkStartTimes[netowrkIndex[0]] = time.Now()
 		case which == "CP":
 			times.ChoosingPhaseStartTime = time.Now()
-		case which == "VP":
-			times.VotingPrepStartTime = time.Now()
 		case which == "VCN1":
 			times.VoteConsNetStartTimes[netowrkIndex[0]] = time.Now()
 		case which == "WL":
 			times.WriteLogStartTime = time.Now()
+		case which == "TR":
+			times.TransfertReqStartTime = time.Now()
 	}
+	times.Mu.Unlock()
 }
 
-func electionValuesCalc(values map[int]time.Duration) (mean float64, stdDev float64) {
+func electionValuesCalc(values map[int]time.Duration) (mean float64) {
 	tmp := []float64{}
 	for _, value := range values {
 		tmp = append(tmp, float64(value.Microseconds()))
 	}
-	mean, stdDev = stat.MeanStdDev(tmp, nil)
-	if math.IsNaN(stdDev) {
-		stdDev = 0
-	}
+	mean = stat.Mean(tmp, nil)
 	if math.IsNaN(mean) {
 		mean = 0
 	}
-	return mean, stdDev
+	return mean
 }

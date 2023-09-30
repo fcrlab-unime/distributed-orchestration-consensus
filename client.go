@@ -14,7 +14,8 @@ func main() {
 	flag.Parse()
 
 	i, c := 0, 0
-	timer := time.NewTimer(3 * time.Second)
+	timer := time.NewTimer(20 * time.Second)
+	message, _ := os.ReadFile("test.yaml")
 	for {
 		select {
 			case <-time.After(time.Duration(500 / reqN - 50) * time.Millisecond):
@@ -24,7 +25,6 @@ func main() {
 					return
 				}
 				defer conn.Close()
-				message, _ := os.ReadFile("test.yaml")
 				conn.Write(message)
 				fmt.Printf("Sent to %s\n",flag.Arg(i))
 				c++

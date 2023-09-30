@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	ng "namesgenerator"
 	"net"
 	"os"
 	s "server"
@@ -10,13 +11,13 @@ import (
 	"sync"
 	"test"
 	"time"
+
 	"golang.org/x/exp/slices"
-	ng "namesgenerator"
 	yaml "gopkg.in/yaml.v3"
 )
 
-func main(){
-	waitSubmit(startServer())
+func main() {
+	waitStart(startServer())
 }
 
 func startServer() *s.Server {
@@ -29,7 +30,7 @@ func startServer() *s.Server {
 	defaultGateway := s.GetDefaultGateway()
 
 	// Gets all peers in the cluster.
-	peersAddrs := s.GetPeersIp(serverIp, subnetMask, nil, nil, false)
+	peersAddrs := s.GetPeersIp(serverIp, subnetMask, nil, false)
 	peersIds := []int{}
 	peers := make(map[int]net.Addr)
 
@@ -66,27 +67,31 @@ func startServer() *s.Server {
 	close(ready)
 	wg.Wait()
 
-	// Starts checking for new peers.
+	// Starts monitoring the workload.
 	go server.GetConsensusModule().MonitorLoad()
+	// Starts checking for new peers.
 	go s.CheckNewPeers(server, &peers)
 
 	return server
 }
 
-
-func waitSubmit(server *s.Server) {
+func waitStart(server *s.Server) {
+	// Create a listening socket
 	listener, err := net.Listen("tcp", ":" + os.Getenv("GATEWAY_PORT"))
 	if err != nil {
 		panic(err)
 	}
 	defer listener.Close()
-	index := 1 // For time measurement.
+	
+	// Coutnter of the accepted connections
+	index := 1
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			panic(err)
 		}
 		if os.Getenv("TIME") == "1" && index == 1 {
+			// Stops looking for new nodes after first request
 			server.GetConsensusModule().CPUChan <- struct{}{}
 		}
 		if os.Getenv("TIME") == "1" {
@@ -109,12 +114,14 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		return
 	}
 
+	// Parses the request
 	services, err := parseMessage(string(buf[0:n]))
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
-	//TODO: da modificare
+
 	for _, service := range services {
+		// Creates different instances for each request
 		command := s.NewService(service, server)
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
@@ -142,19 +149,19 @@ func parseMessage(message string) ([]string, error) {
 	
 	if _, ok := parseYml["networks"]; ok {
 		for k := range parseYml["networks"].(map[string]interface{}) {
-		networks = append(networks, k)
+			networks = append(networks, k)
 		}
 	}
 
 	if _, ok := parseYml["volumes"]; ok {
 		for k := range parseYml["volumes"].(map[string]interface{}) {
-		volumes = append(volumes, k)
+			volumes = append(volumes, k)
 		}
 	}
 
 	if _, ok := parseYml["secrets"]; ok {
 		for k := range parseYml["secrets"].(map[string]interface{}) {
-		secrets = append(secrets, k)
+			secrets = append(secrets, k)
 		}
 	}
 	var serviceNetworks []string
