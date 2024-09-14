@@ -2,3 +2,5 @@ go 1.21
 
 use ./src/server
 use ./src/log
+use ./test
+use ./test/namesgenerator

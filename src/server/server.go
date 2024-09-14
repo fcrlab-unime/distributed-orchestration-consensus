@@ -14,6 +14,7 @@ import (
 	"os"
 	st "storage"
 	"sync"
+	"test"
 	"time"
 )
 
@@ -37,6 +38,8 @@ type Server struct {
 	ready <-chan interface{}
 	quit  chan interface{}
 	wg    sync.WaitGroup
+
+	Times map[int]*test.Times
 }
 
 func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
@@ -49,6 +52,7 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.ready = ready
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
+	s.Times = make(map[int]*test.Times)
 	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan) 
 	return s
 }
@@ -243,10 +247,20 @@ func (s *Server) GetConsensusModule() *ConsensusModule {
 	return s.cm
 }
 
-func (s *Server) Submit(command *Service) {
-	s.cm.Election()
+func (s *Server) Submit(command *Service, index ...int) {
+	if os.Getenv("TIME") == "1" {
+		s.cm.Election(index[0])
+	} else {
+		s.cm.Election()
+	}
 	<- s.cm.ElectionChan
-	s.cm.Voting(command)	
+	if os.Getenv("TIME") == "1" {
+		s.Times[index[0]].SetDurationAndWrite(index[0], "ENVE", s.GetConsensusModule().StartTime)
+		s.Times[index[0]].SetStartTime("CP")
+		s.cm.Voting(command, index[0])
+	} else {
+		s.cm.Voting(command)
+	}
 	<- s.cm.VotingChan
 	s.cm.Pause()
 }
