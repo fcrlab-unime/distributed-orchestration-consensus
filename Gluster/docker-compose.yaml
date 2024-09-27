@@ -6,14 +6,9 @@ services:
     privileged: true
     environment:
       - NET_IFACE=eth0
-    networks:
-      - boh
+    network_mode: host
     volumes:
       - gluster:/data:rw
-
-networks:
-  boh:
-    external: true
 
 volumes:
   gluster:
