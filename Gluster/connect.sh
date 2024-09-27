@@ -8,19 +8,25 @@ while read IFACE; do
         break
     fi
 done <<< $IFACE_LIST
+#echo $IFACE_LIST
 #echo $IP
 DONE=false
+echo "Scanning for peers..."
 while read line; do
-    RES=$(gluster peer probe $line 2>&1)
+    echo $line
+    RES=$(timeout 1s gluster peer probe $line 2>&1)
+    echo $RES
     if grep -vq "localhost" <<< "$RES"; then
         if $(grep -q "success" <<< "$RES") || $(grep -q "already part of" <<< "$RES") ; then
             DONE=true
             break
         fi
     fi
-done <<<$(fping -aqg -i 1 -r 0 $IP/25)
-#echo $DONE
+done <<< $(fping -aqg -i 10 -r 0 $IP/20)
+
+echo $DONE
 if [[ $DONE == false ]]; then
+    echo "Shared volume not found. Creating one..."
     gluster volume create log $IP:/data force 
     gluster volume start log
 fi
