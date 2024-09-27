@@ -1,7 +1,7 @@
 FROM ubuntu:20.04
 
 RUN apt update && apt -y upgrade
-RUN apt install -y vim software-properties-common iproute2 fping policycoreutils
+RUN apt install -y vim software-properties-common iproute2 fping policycoreutils policycoreutils-python-utils selinux-utils
 
 RUN add-apt-repository ppa:gluster/glusterfs-7 && apt update
 RUN apt install -y glusterfs-server
