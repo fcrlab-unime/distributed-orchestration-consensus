@@ -8,7 +8,7 @@ while read IFACE; do
         break
     fi
 done <<< $IFACE_LIST
-echo $IP
+#echo $IP
 DONE=false
 while read line; do
     RES=$(gluster peer probe $line 2>&1)
@@ -19,7 +19,7 @@ while read line; do
         fi
     fi
 done <<<$(fping -aqg -i 1 -r 0 $IP/25)
-echo $DONE
+#echo $DONE
 if [[ $DONE == false ]]; then
     gluster volume create log $IP:/data force 
     gluster volume start log
