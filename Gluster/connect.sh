@@ -3,12 +3,12 @@ IP=""
 MASK=""
 while read IFACE; do
     INFOS=($IFACE)
-    if [[ ${INFOS[0]} == *"$NET_IACE"* && ${INFOS[1]} == "UP" ]]; then
+    if [[ ${INFOS[0]} == *"$NET_IFACE"* && ${INFOS[1]} == "UP" ]]; then
         IFS='/' read IP MASK <<< "${INFOS[2]}"
         break
     fi
 done <<< $IFACE_LIST
-
+echo $IP
 DONE=false
 while read line; do
     RES=$(gluster peer probe $line 2>&1)
@@ -19,7 +19,7 @@ while read line; do
         fi
     fi
 done <<<$(fping -aqg -i 1 -r 0 $IP/25)
-
+echo $DONE
 if [[ $DONE == false ]]; then
     gluster volume create log $IP:/data force 
     gluster volume start log
