@@ -24,7 +24,8 @@ while read line; do
     fi
 done <<< $(fping -aqg -i 10 -r 0 $IP/20)
 
-echo $DONE
+#echo $DONE
+#sleep 5s
 if [[ $DONE == false ]]; then
     echo "Shared volume not found. Creating one..."
     gluster volume create log $IP:/data force 
