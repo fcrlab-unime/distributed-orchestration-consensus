@@ -1,7 +1,13 @@
 FROM ubuntu:20.04
 
 RUN apt update && apt -y upgrade
-RUN apt install -y vim software-properties-common iproute2 fping policycoreutils policycoreutils-python-utils selinux-utils
+RUN DEBIAN_FRONTEND=noninteractive
+RUN apt install -y tzdata
+RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime && \
+    dpkg-reconfigure --frontend noninteractive tzdata
+RUN apt install -y vim software-properties-common iproute2 fping policycoreutils policycoreutils-python-utils selinux-utils selinux-basics
+
+RUN selinux-activate
 
 RUN add-apt-repository ppa:gluster/glusterfs-7 && apt update
 RUN apt install -y glusterfs-server
