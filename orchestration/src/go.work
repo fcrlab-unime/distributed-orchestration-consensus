@@ -1,5 +1,5 @@
 go 1.21
 
-use ./src/server
-use ./src/log
-use ./src/namesgenerator
+use ./server
+use ./log
+use ./namesgenerator
