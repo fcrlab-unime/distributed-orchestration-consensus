@@ -84,7 +84,6 @@ All configurations for the orchestration setup and consensus algorithms are mana
 - **GATEWAY_PORT**: port for incoming orchestration requests
 - **LOG_PATH**: path where the distributed file system is mounted
 - **DEBUG**: [0,1] enable/disable debug features
-- **TIME**:
 - **NET_IFACE**: network interface of the host node
 
 ## Contributing
