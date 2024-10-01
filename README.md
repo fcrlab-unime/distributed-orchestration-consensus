@@ -36,7 +36,7 @@ This repository contains implementations of distributed orchestration and consen
 
 Before running or developing this project, ensure you have the following installed:
 
-- **Docker** (For running containerized instances, optional but recommended)
+- **Docker** (For running containerized instances, mandatory)
 - **Distributed Systems** knowledge (Recommended)
 
 ## Installation
@@ -74,7 +74,7 @@ docker compose up -d
 
 This will launch the distributed filesystem and the orchestration and consensus algorithm based on the specified configuration.
 
-**N.B.**: the system must be launched on the other nodes only after it is ready on the first one
+**N.B.**: the system must be launched on the other nodes only after it is ready on the first one.
 
 ## Configuration
 
