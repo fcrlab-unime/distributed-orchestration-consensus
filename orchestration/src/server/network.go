@@ -26,9 +26,9 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 		}
 	}
 	ip = &net.IPAddr{IP: net.ParseIP(infos[0])}
-	//subnetMask = infos[1]
-	//return ip, subnetMask
-	return ip, "25"
+	subnetMask = infos[1]
+	return ip, subnetMask
+	//return ip, "25"
 }
 
 func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, check bool) (newPeers []net.Addr) {

@@ -22,7 +22,7 @@ while read line; do
             break
         fi
     fi
-done <<< $(fping -aqg -i 10 -r 0 $IP/20)
+done <<< $(fping -aqg -i 10 -r 0 $IP/$MASK)
 
 #echo $DONE
 #sleep 5s
