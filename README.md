@@ -102,7 +102,7 @@ distributed-orchestration-consensus/
 │   └── src                          # Orchestration module source code
 |
 ├── build.sh                         # Containers build script
-├── docker-compose.yaml              # Docker compose to launch all
+└── docker-compose.yaml              # Docker compose to launch all
 ```
 
 ## Contributing
