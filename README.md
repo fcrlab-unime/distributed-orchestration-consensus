@@ -11,6 +11,7 @@ A project designed to implement and test distributed orchestration and consensus
 - [Installation](#installation)
 - [Usage](#usage)
 - [Configuration](#configuration)
+- [Project Structure](#project-structure)
 - [Contributing](#contributing)
 - [License](#license)
 - [Acknowledgments](#acknowledgments)
@@ -85,6 +86,24 @@ All configurations for the orchestration setup and consensus algorithms are mana
 - **LOG_PATH**: path where the distributed file system is mounted
 - **DEBUG**: [0,1] enable/disable debug features
 - **NET_IFACE**: network interface of the host node
+
+## Project Structure
+
+```
+distributed-orchestration-consensus/
+├── client                           # Client folder
+|
+├── gluster                          # GlusterFS folder
+│   ├── Dockerfile                   # Dockerfile to build the glusterfs container image
+|
+├── orchestration                    # Orchestration module
+│   ├── Dockerfile                   # Dockerfile to build the orchestration container image
+│   ├── scripts                      # Bash scripts used by the orchestration module
+│   └── src                          # Orchestration module source code
+|
+├── build.sh                         # Containers build script
+├── docker-compose.yaml              # Docker compose to launch all
+```
 
 ## Contributing
 
