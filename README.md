@@ -94,7 +94,7 @@ distributed-orchestration-consensus/
 ├── client                           # Client folder
 |
 ├── gluster                          # GlusterFS folder
-│   ├── Dockerfile                   # Dockerfile to build the glusterfs container image
+│   └── Dockerfile                   # Dockerfile to build the glusterfs container image
 |
 ├── orchestration                    # Orchestration module
 │   ├── Dockerfile                   # Dockerfile to build the orchestration container image
