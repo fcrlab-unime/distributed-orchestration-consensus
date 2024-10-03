@@ -16,6 +16,7 @@ import (
 )
 
 func main() {
+	fmt.Println("Orchestration module started.")
 	waitStart(startServer())
 }
 
