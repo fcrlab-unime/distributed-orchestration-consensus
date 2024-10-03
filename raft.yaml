@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: raft
+  labels:
+    app: raft
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: raft
+  template:
+    metadata:
+      labels:
+        app: raft
+    spec:
+      containers:
+      - name: raft
+        image: localhost:5000/raft
+        ports:
+        - containerPort: 8080
