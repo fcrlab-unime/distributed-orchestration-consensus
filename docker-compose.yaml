@@ -1,5 +1,3 @@
-version: '3.5'
-
 services:
   raft:
     image: raft
@@ -10,13 +8,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     privileged: true
     depends_on:
-      - gluster
-
+          - gluster
   gluster:
     image: gluster
     privileged: true
-    environment:
-      - NET_IFACE=eth0
+    env_file:
+      - .env
     network_mode: host
     volumes:
       - gluster:/data:rw
