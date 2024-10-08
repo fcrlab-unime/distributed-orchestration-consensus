@@ -31,7 +31,6 @@ func GetNetworkInfo() (ip net.Addr, subnetMask string) {
 }
 
 func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, check bool) (newPeers []net.Addr) {
-
 	// check is true if we want to get new peers in the network
 	if check {
 		if _, err := os.Stat("/tmp/ip.fifo"); os.IsNotExist(err) {
@@ -77,6 +76,9 @@ func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 	peerChan := make(chan net.Addr, 100)
 	ip, mask:= GetNetworkInfo()
 	var connect int
+	if os.Getenv("DEBUG") == "1" {
+		fmt.Println("Checking for new peers..")
+	}
 	go GetPeersIp(ip, mask, &peerChan, true)
 
 	for {
