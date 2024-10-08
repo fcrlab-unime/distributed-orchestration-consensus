@@ -22,5 +22,7 @@ COPY ./init.sh /bin/init.sh
 COPY ./connect.sh /bin/connect.sh
 COPY ./check_new.sh /bin/check_new.sh
 
+RUN chmod +x /bin/init.sh /bin/connect.sh /bin/check_new.sh
+
 #START EVERITHING
 CMD ["/bin/init.sh"]

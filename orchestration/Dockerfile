@@ -41,5 +41,7 @@ ENV GATEWAY_PORT=9093
 ENV DEBUG=0
 ENV TIME=0
 
+RUN chmod +x ./init.sh
+
 #STARTING EVERYTHING
 CMD [ "./init.sh" ]
