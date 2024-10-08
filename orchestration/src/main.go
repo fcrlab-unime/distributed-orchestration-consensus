@@ -28,7 +28,7 @@ func startServer() *s.Server {
 	serverIp, subnetMask := s.GetNetworkInfo()
 	if os.Getenv("DEBUG") == "1" {
 		fmt.Println("Network Info:")
-		fmt.Println("Server IP:" + serverIp)
+		fmt.Println("Server IP:" + serverIp.String())
 		fmt.Println("Subnet Mask:" + subnetMask)
 	}
 	serverId := s.GetServerIdFromIp(serverIp, subnetMask)
