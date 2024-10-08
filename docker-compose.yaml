@@ -1,6 +1,6 @@
 services:
-  raft:
-    image: raft
+  orchestration:
+    image: orchestration
     network_mode: host
     env_file:
       - .env
