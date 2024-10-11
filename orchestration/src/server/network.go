@@ -12,16 +12,15 @@ import (
 	"time"
 )
 
-
 func GetNetworkInfo() (ip net.Addr, subnetMask string) {
-	infosCmd, _ := exec.Command("ip", "-4", "-brief" , "address").Output()
+	infosCmd, _ := exec.Command("ip", "-4", "-brief", "address").Output()
 	tmpInfos := strings.Split(string(infosCmd), "\n")
 	infos := []string{}
 	for i := 0; i < len(tmpInfos); i++ {
 		infos = strings.Fields(tmpInfos[i])
 		if strings.Contains(infos[0], os.Getenv("NET_IFACE")) && strings.Contains(infos[1], "UP") {
 			infos = strings.Split(infos[2], "/")
-			infos = []string {infos[0], infos[1]}
+			infos = []string{infos[0], infos[1]}
 			break
 		}
 	}
@@ -48,9 +47,9 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, c
 				continue
 			}
 			nline := strings.TrimSuffix(string(line), "\n")
-			if os.Getenv("DEBUG") == "1" {
+			/* if os.Getenv("DEBUG") == "1" {
 				fmt.Println(nline)
-			}
+			} */
 			*peerChan <- &net.IPAddr{IP: net.ParseIP(string(nline))}
 		}
 	} else {
@@ -74,11 +73,8 @@ func GetPeersIp(serverIp net.Addr, subnetMask string, peerChan *chan net.Addr, c
 func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 	peers := *peersPtr
 	peerChan := make(chan net.Addr, 100)
-	ip, mask:= GetNetworkInfo()
+	ip, mask := GetNetworkInfo()
 	var connect int
-	if os.Getenv("DEBUG") == "1" {
-		fmt.Println("Checking for new peers..")
-	}
 	go GetPeersIp(ip, mask, &peerChan, true)
 
 	for {
@@ -123,7 +119,7 @@ func CheckNewPeers(server *Server, peersPtr *map[int]net.Addr) {
 	}
 }
 
-func GetDefaultGateway() (*net.IPAddr) {
+func GetDefaultGateway() *net.IPAddr {
 	infosCmd, _ := exec.Command("ip", "route").Output()
 	tmpInfos := strings.Split(string(infosCmd), "\n")
 
@@ -184,17 +180,17 @@ func GetServerIpFromId(id int) (LeaderIp net.Addr) {
 	if netmaskInt >= 24 {
 		ipIntList[3] = id
 	} else if netmaskInt >= 16 {
-		ipIntList[2] = id/256
-		ipIntList[3] = id%256
+		ipIntList[2] = id / 256
+		ipIntList[3] = id % 256
 	} else if netmaskInt >= 8 {
-		ipIntList[1] = id/256/256
-		ipIntList[2] = id/256%256
-		ipIntList[3] = id%256
+		ipIntList[1] = id / 256 / 256
+		ipIntList[2] = id / 256 % 256
+		ipIntList[3] = id % 256
 	} else {
-		ipIntList[0] = id/256/256/256
-		ipIntList[1] = id/256/256%256
-		ipIntList[2] = id/256%256
-		ipIntList[3] = id%256
+		ipIntList[0] = id / 256 / 256 / 256
+		ipIntList[1] = id / 256 / 256 % 256
+		ipIntList[2] = id / 256 % 256
+		ipIntList[3] = id % 256
 	}
 
 	ipStr := ""
