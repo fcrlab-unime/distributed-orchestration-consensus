@@ -67,12 +67,12 @@ func (s CMState) String() string {
 }
 
 type LogEntry struct {
-	Command 	Service
-	Term    	int
-	LeaderId	int
-	Index 		string
-	ChosenId	int
-	Timestamp 	string
+	Command   Service
+	Term      int
+	LeaderId  int
+	Index     string
+	ChosenId  int
+	Timestamp string
 }
 
 // ConsensusModule (CM) implements a single node of Raft consensus.
@@ -125,7 +125,7 @@ type ConsensusModule struct {
 
 	// triggerAEChan is an internal notification channel used to trigger
 	// sending new AEs to followers when interesting changes occurred.
-	triggerAEChan 		chan struct{}
+	triggerAEChan chan struct{}
 
 	// Persistent Raft state on all servers
 	currentTerm int
@@ -133,9 +133,9 @@ type ConsensusModule struct {
 	log         []LogEntry
 
 	// Volatile Raft state on all servers
-	commitIndex        int
-	lastApplied        int
-	state              CMState
+	commitIndex int
+	lastApplied int
+	state       CMState
 
 	// Volatile Raft state on leaders
 	nextIndex  map[int]int
@@ -215,14 +215,14 @@ func (cm *ConsensusModule) Stop() {
 }
 
 type DeployArgs struct {
-	Id string
+	Id      string
 	Service []byte
 }
 
-type DeployReply struct {}
+type DeployReply struct{}
 
 func (cm *ConsensusModule) Deploy(args DeployArgs, reply *DeployReply) error {
-	if err := os.WriteFile("services/" + args.Id, args.Service, 0644); err != nil {
+	if err := os.WriteFile("services/"+args.Id, args.Service, 0644); err != nil {
 		return err
 	}
 	go Exec(args.Id)
@@ -233,7 +233,7 @@ func (cm *ConsensusModule) Deploy(args DeployArgs, reply *DeployReply) error {
 // Expects cm.Mu to be locked.
 
 func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
-	
+
 	for _, log := range logs {
 		termData := make(map[string]interface{})
 		termData["Term"] = strconv.Itoa(log.Term)
@@ -251,12 +251,12 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry) {
 			isLeader, isChosen := cm.CheckCMId(leaderId), cm.CheckCMId(chosenId)
 			if isLeader {
 				if isChosen {
-				fmt.Println("Esecuzione da parte del leader")
-				go Exec(termData["Command"].(Service).ServiceID)
+					fmt.Println("Esecuzione da parte del leader")
+					go Exec(termData["Command"].(Service).ServiceID)
 				} else {
 					file, _ := os.ReadFile("services/" + termData["Command"].(Service).ServiceID)
 					args := DeployArgs{
-						Id: termData["Command"].(Service).ServiceID,
+						Id:      termData["Command"].(Service).ServiceID,
 						Service: file,
 					}
 					var reply DeployReply
@@ -275,20 +275,19 @@ func (cm *ConsensusModule) Dlog(format string, args ...interface{}) {
 	}
 }
 
-// See figure 2 in the paper.
 type RequestVoteArgs struct {
-	Term         	int
-	CandidateId  	int
-	LastLogIndex 	int
-	LastLogTerm  	int
-	LoadLevel    	int
+	Term         int
+	CandidateId  int
+	LastLogIndex int
+	LastLogTerm  int
+	LoadLevel    int
 }
 
 type RequestVoteReply struct {
-	Term        	int
-	VoteGranted 	bool
-	LoadLevel   	int
-	VoteElabTime 	time.Duration
+	Term         int
+	VoteGranted  bool
+	LoadLevel    int
+	VoteElabTime time.Duration
 }
 
 // RequestVote RPC.
@@ -329,7 +328,6 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	return nil
 }
 
-// See figure 2 in the paper.
 type AppendEntriesArgs struct {
 	Term     int
 	LeaderId int
@@ -338,19 +336,17 @@ type AppendEntriesArgs struct {
 	PrevLogTerm  int
 	Entries      []LogEntry
 	LeaderCommit int
-	ChosenId	 int
+	ChosenId     int
 }
 
 type AppendEntriesReply struct {
 	Term    int
 	Success bool
 
-	// Faster conflict resolution optimization (described near the end of section
-	// 5.3 in the paper.)
 	ConflictIndex int
 	ConflictTerm  int
 
-	VoteElabTime  time.Duration
+	VoteElabTime time.Duration
 }
 
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
@@ -414,7 +410,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
 				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
-				cm.Mu.Lock()	
+				cm.Mu.Lock()
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -499,11 +495,11 @@ func (cm *ConsensusModule) Election() {
 				} else if reply.Term == savedCurrentTerm {
 					if reply.VoteGranted {
 						votesReceived += 1
-						if votesReceived*2 > len(cm.peerIds)/*+1*/ {
+						if votesReceived*2 > len(cm.peerIds) /*+1*/ {
 							// +1 is canceled because it should be the server itself, but
 							// I must subtract 1 because the default gateway is included
 							// and it is not a server
-						
+
 							// Won the election!
 							cm.Dlog("wins election with %d votes", votesReceived)
 							cm.startLeader()
@@ -528,7 +524,7 @@ func (cm *ConsensusModule) becomeFollower(term int) {
 
 // startLeader switches cm into a leader state and begins process of heartbeats.
 // Expects cm.Mu to be locked.
-func (cm *ConsensusModule) startLeader(){
+func (cm *ConsensusModule) startLeader() {
 	cm.state = Leader
 	cm.ElectionChan <- struct{}{}
 	for _, peerId := range cm.peerIds {
@@ -541,7 +537,7 @@ func (cm *ConsensusModule) startLeader(){
 	// Whenever something is sent on triggerAEChan
 	go func() {
 		for {
-			select {	
+			select {
 			case <-cm.stopSendingAEsChan:
 				return
 			case <-cm.triggerAEChan:
@@ -698,9 +694,9 @@ func (cm *ConsensusModule) commitChanSender() {
 
 		for i, entry := range entries {
 			cm.commitChan <- CommitEntry{
-				Command: entry.Command,
-				Index:   savedLastApplied + i + 1,
-				Term:    savedTerm,
+				Command:  entry.Command,
+				Index:    savedLastApplied + i + 1,
+				Term:     savedTerm,
 				ChosenId: entry.ChosenId,
 			}
 		}
@@ -728,20 +724,20 @@ func (cm *ConsensusModule) MonitorLoad() {
 		load, cpu = l.GetLoadLevel()
 		cm.Mu.Unlock()
 		select {
-			case <-cm.CPUChan:
-				go cm.MonitorForTest(&cpu)
-			default:
-				cm.Mu.Lock()
-				cm.loadLevel = load
-				cm.Mu.Unlock()
-				time.Sleep(20 * time.Millisecond)
+		case <-cm.CPUChan:
+			go cm.MonitorForTest(&cpu)
+		default:
+			cm.Mu.Lock()
+			cm.loadLevel = load
+			cm.Mu.Unlock()
+			time.Sleep(20 * time.Millisecond)
 		}
 	}
 }
 
 func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
 	timer := time.NewTimer(8 * time.Millisecond)
-	f, err := os.OpenFile("/log/cpu" + strconv.Itoa(cm.id) + ".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := os.OpenFile("/log/cpu"+strconv.Itoa(cm.id)+".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	f.WriteString("Times,Perc\n")
 	if err != nil {
 		panic(err)
@@ -789,7 +785,7 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 			lowestPeers = []int{peerId}
 		} else if loadLevel == lowestLoad {
 			lowestPeers = append(lowestPeers, peerId)
-		} 
+		}
 		lastPeer = peerId
 	}
 	return lowestPeers[rand.Intn(len(lowestPeers))]
@@ -797,12 +793,12 @@ func (cm *ConsensusModule) minLoadLevelMap() int {
 
 func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry) {
 	newLog := LogEntry{
-		Command:	*command,
-		Term: 		cm.currentTerm,
-		LeaderId: 	cm.id,
-		ChosenId: 	chosenId,
-		Index: 	  	"",
-		Timestamp: 	time.Now().Local().Format("2006-01-02 15:04:05.0000"),
+		Command:   *command,
+		Term:      cm.currentTerm,
+		LeaderId:  cm.id,
+		ChosenId:  chosenId,
+		Index:     "",
+		Timestamp: time.Now().Local().Format("2006-01-02 15:04:05.0000"),
 	}
 	values := reflect.ValueOf(newLog)
 	sum := []byte{}
@@ -811,10 +807,10 @@ func (cm *ConsensusModule) NewLog(command *Service, chosenId int) (log LogEntry)
 	}
 	newLog.Index = fmt.Sprintf("%x", sha256.Sum256(sum))
 	return newLog
-			 
+
 }
 
 func Exec(service string) {
-	exec.Command("docker-compose", "-f", "/home/raft/services/" + service, "up", "-d").Start()
+	exec.Command("docker-compose", "-f", "/home/raft/services/"+service, "up", "-d").Start()
 	fmt.Printf("Eseguito %s\n", service)
 }
