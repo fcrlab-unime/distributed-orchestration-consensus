@@ -9,6 +9,7 @@ import (
 	st "storage"
 	"strings"
 	"sync"
+	"test"
 	"time"
 
 	"golang.org/x/exp/slices"
@@ -88,17 +89,37 @@ func waitStart(server *s.Server) {
 	}
 	defer listener.Close()
 
-	// Coutnter of the accepted connections
+	// Counter of the accepted connections
+	index := 1
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			panic(err)
 		}
-		go handleConnection(conn, server)
+		if os.Getenv("TIME") == "1" && index == 1 {
+			// Stops looking for new nodes after first request
+			server.GetConsensusModule().CPUChan <- struct{}{}
+		}
+		if os.Getenv("TIME") == "1" {
+			server.Times[index] = test.NewTimesStruct(server.GetId())
+			server.Times[index].SetStartTime("RE")
+			go handleConnection(conn, server, index)
+			index++
+		} else {
+			go handleConnection(conn, server)
+		}
 	}
+	/* for {
+		conn, err := listener.Accept()
+		if err != nil {
+			panic(err)
+		}
+		go handleConnection(conn, server)
+	} */
 }
 
-func handleConnection(conn net.Conn, server *s.Server) {
+func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	defer conn.Close()
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf[0:])
@@ -119,14 +140,20 @@ func handleConnection(conn net.Conn, server *s.Server) {
 	if err != nil {
 		panic(err)
 	}
-	f.WriteString(fmt.Sprintf("%v\n", parseDuration))
+	f.WriteString(fmt.Sprintf("%v,%v\n", parseTime, parseDuration))
 	f.Close()
 
 	for _, service := range services {
 		// Creates different instances for each request
 		command := s.NewService(service, server)
 		if err == nil {
-			server.Submit(command)
+			if os.Getenv("TIME") == "1" {
+				server.Times[index[0]].SetDurationAndWrite(index[0], "RE", server.GetConsensusModule().StartTime)
+				server.Submit(command, index[0])
+			} else {
+				server.Submit(command)
+			}
+			/* server.Submit(command) */
 		}
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"os"
 	st "storage"
 	"sync"
+	"test"
 	"time"
 )
 
@@ -22,7 +23,7 @@ type Server struct {
 
 	serverId int
 	peerIds  []int
-	peers	 map[int]net.Addr
+	peers    map[int]net.Addr
 
 	cm       *ConsensusModule
 	storage  st.Storage
@@ -37,6 +38,8 @@ type Server struct {
 	ready <-chan interface{}
 	quit  chan interface{}
 	wg    sync.WaitGroup
+
+	Times map[int]*test.Times
 }
 
 func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
@@ -49,7 +52,8 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.ready = ready
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
-	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan) 
+	s.Times = make(map[int]*test.Times)
+	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
 	return s
 }
 
@@ -63,7 +67,7 @@ func (s *Server) Serve(ip net.Addr, wg *sync.WaitGroup, ready chan interface{}) 
 	s.rpcServer.RegisterName("ConsensusModule", s.rpcProxy)
 
 	var err error
-	s.listener, err = net.Listen("tcp", ip.String()+":" + os.Getenv("RPC_PORT"))
+	s.listener, err = net.Listen("tcp", ip.String()+":"+os.Getenv("RPC_PORT"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -126,7 +130,7 @@ func (s *Server) ConnectToPeer(peerId int, addr net.Addr) error {
 	defer s.mu.Unlock()
 	fmt.Printf("Connecting to peer %d at %s\n", peerId, addr.String())
 	if s.peerClients[peerId] == nil {
-		client, err := rpc.Dial("tcp", addr.String()+":" + os.Getenv("RPC_PORT"))
+		client, err := rpc.Dial("tcp", addr.String()+":"+os.Getenv("RPC_PORT"))
 		if err != nil {
 			return err
 		} else {
@@ -175,10 +179,10 @@ func (s *Server) Call(id int, serviceMethod string, args interface{}, reply inte
 
 // RPCProxy is a trivial pass-thru proxy type for ConsensusModule's RPC methods.
 // It's useful for:
-// - Simulating a small delay in RPC transmission.
-// - Avoiding running into https://github.com/golang/go/issues/19957
-// - Simulating possible unreliable connections by delaying some messages
-//   significantly and dropping others when RAFT_UNRELIABLE_RPC is set.
+//   - Simulating a small delay in RPC transmission.
+//   - Avoiding running into https://github.com/golang/go/issues/19957
+//   - Simulating possible unreliable connections by delaying some messages
+//     significantly and dropping others when RAFT_UNRELIABLE_RPC is set.
 type RPCProxy struct {
 	cm *ConsensusModule
 }
@@ -243,10 +247,22 @@ func (s *Server) GetConsensusModule() *ConsensusModule {
 	return s.cm
 }
 
-func (s *Server) Submit(command *Service) {
-	s.cm.Election()
-	<- s.cm.ElectionChan
-	s.cm.Voting(command)	
-	<- s.cm.VotingChan
+func (s *Server) Submit(command *Service, index ...int) {
+	if os.Getenv("TIME") == "1" {
+		s.cm.Election(index[0])
+	} else {
+		s.cm.Election()
+	}
+	/* s.cm.Election() */
+	<-s.cm.ElectionChan
+	if os.Getenv("TIME") == "1" {
+		s.Times[index[0]].SetDurationAndWrite(index[0], "ENVE", s.GetConsensusModule().StartTime)
+		s.Times[index[0]].SetStartTime("CP")
+		s.cm.Voting(command, index[0])
+	} else {
+		s.cm.Voting(command)
+	}
+	/* s.cm.Voting(command) */
+	<-s.cm.VotingChan
 	s.cm.Pause()
 }
