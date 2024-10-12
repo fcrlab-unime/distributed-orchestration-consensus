@@ -128,20 +128,20 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		return
 	}
 
-	parseTime := time.Now()
+	/* parseTime := time.Now() */
 	// Parses the request
 	services, err := parseMessage(string(buf[0:n]))
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
-	parseDuration := time.Since(parseTime)
+	/* parseDuration := time.Since(parseTime)
 
 	f, err := os.OpenFile("/log/requestElab.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		panic(err)
 	}
 	f.WriteString(fmt.Sprintf("%v,%v\n", parseTime, parseDuration))
-	f.Close()
+	f.Close() */
 
 	for _, service := range services {
 		// Creates different instances for each request

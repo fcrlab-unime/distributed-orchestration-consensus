@@ -478,12 +478,12 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteElabTime)
-	f, err := os.OpenFile(fmt.Sprintf("/log/appendEntryElab-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	/* f, err := os.OpenFile(fmt.Sprintf("/log/appendEntryElab-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		panic(err)
 	}
 	f.WriteString(fmt.Sprintf("%v\n", reply.VoteElabTime))
-	f.Close()
+	f.Close() */
 	cm.Dlog("AppendEntries reply: %+v", *reply)
 
 	return nil
