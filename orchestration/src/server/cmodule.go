@@ -737,7 +737,11 @@ func (cm *ConsensusModule) MonitorLoad() {
 
 func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
 	timer := time.NewTimer(8 * time.Millisecond)
-	f, err := os.OpenFile("/log/cpu"+strconv.Itoa(cm.id)+".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	folderPath := "/log/test/cpu"
+	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
+		os.MkdirAll(folderPath, os.ModePerm)
+	}
+	f, err := os.OpenFile(folderPath+strconv.Itoa(cm.id)+".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	f.WriteString("Times,Perc\n")
 	if err != nil {
 		panic(err)
