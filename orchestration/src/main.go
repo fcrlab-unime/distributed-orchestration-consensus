@@ -47,7 +47,7 @@ func startServer() *s.Server {
 			peersIds = append(peersIds, id)
 		}
 	}
-	
+
 	// Creates the server.
 	server := s.NewServer(serverId, storage, ready, commitChannel)
 
@@ -82,12 +82,12 @@ func startServer() *s.Server {
 
 func waitStart(server *s.Server) {
 	// Create a listening socket
-	listener, err := net.Listen("tcp", ":" + os.Getenv("GATEWAY_PORT"))
+	listener, err := net.Listen("tcp", ":"+os.Getenv("GATEWAY_PORT"))
 	if err != nil {
 		panic(err)
 	}
 	defer listener.Close()
-	
+
 	// Coutnter of the accepted connections
 	for {
 		conn, err := listener.Accept()
@@ -100,18 +100,27 @@ func waitStart(server *s.Server) {
 
 func handleConnection(conn net.Conn, server *s.Server) {
 	defer conn.Close()
-	buf := make([]byte, 4096) 
+	buf := make([]byte, 4096)
 	n, err := conn.Read(buf[0:])
 
 	if err != nil {
 		return
 	}
 
+	parseTime := time.Now()
 	// Parses the request
 	services, err := parseMessage(string(buf[0:n]))
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
+	parseDuration := time.Since(parseTime)
+
+	f, err := os.OpenFile("/log/requestElab.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	f.WriteString(fmt.Sprintf("%v\n", parseDuration))
+	f.Close()
 
 	for _, service := range services {
 		// Creates different instances for each request
@@ -134,7 +143,7 @@ func parseMessage(message string) ([]string, error) {
 	networks := []string{}
 	volumes := []string{}
 	secrets := []string{}
-	
+
 	if _, ok := parseYml["networks"]; ok {
 		for k := range parseYml["networks"].(map[string]interface{}) {
 			networks = append(networks, k)
@@ -180,7 +189,7 @@ func parseMessage(message string) ([]string, error) {
 	for _, v := range parseYml["services"].(map[string]interface{}) {
 		service := map[string]interface{}{
 			"services": map[string]interface{}{ng.GetRandomName(1): v},
-			"version": parseYml["version"],
+			"version":  parseYml["version"],
 		}
 		if _, ok := v.(map[string]interface{})["networks"]; ok {
 			for _, n := range networks {
@@ -210,9 +219,8 @@ func parseMessage(message string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		servicesList = append(servicesList, "ServiceType: " + parseYml["ServiceType"].(string) + "\n\n" + string(yml))
+		servicesList = append(servicesList, "ServiceType: "+parseYml["ServiceType"].(string)+"\n\n"+string(yml))
 	}
-
 
 	return servicesList, nil
 }
