@@ -69,6 +69,7 @@ func (s *Server) deleteDeployedService() {
 	} else {
 		s.toSubmit = []Service{}
 	}
+	fmt.Println("lenght after deletion %d", len(s.toSubmit))
 }
 
 func (s *Server) Serve(ip net.Addr, wg *sync.WaitGroup, ready chan interface{}) {
