@@ -89,6 +89,11 @@ func waitStart(server *s.Server) {
 	}
 	defer listener.Close()
 
+	// START CPU MONITORING
+	if os.Getenv("TIME") == "1" {
+		server.GetConsensusModule().CPUChan <- struct{}{}
+	}
+
 	// Counter of the accepted connections
 	index := 1
 
@@ -96,10 +101,6 @@ func waitStart(server *s.Server) {
 		conn, err := listener.Accept()
 		if err != nil {
 			panic(err)
-		}
-		if os.Getenv("TIME") == "1" && index == 1 {
-			// Stops looking for new nodes after first request
-			server.GetConsensusModule().CPUChan <- struct{}{}
 		}
 		if os.Getenv("TIME") == "1" {
 			server.Times[index] = test.NewTimesStruct(server.GetId())
