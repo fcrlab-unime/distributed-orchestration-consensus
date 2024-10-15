@@ -59,8 +59,8 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	return s
 }
 
-func (s *Server) AddService(service Service) {
-	s.toSubmit = append(s.toSubmit, service)
+func (s *Server) AddService(service *Service) {
+	s.toSubmit = append(s.toSubmit, *service)
 }
 
 func (s *Server) deleteDeployedService() {
