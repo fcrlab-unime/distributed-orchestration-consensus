@@ -147,7 +147,7 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	for _, service := range services {
 		// Creates different instances for each request
 		command := s.NewService(service, server)
-		server.AddService(command)
+		//server.AddService(command)
 		fmt.Println("Service added to the queue.")
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
