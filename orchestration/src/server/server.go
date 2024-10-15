@@ -279,8 +279,8 @@ func (s *Server) Submit(command *Service, index ...int) {
 	}
 	/* s.cm.Voting(command) */
 	<-s.cm.VotingChan
-	if len(s.toSubmit) == 0 {
+	/* if len(s.toSubmit) == 0 {
 		s.cm.Pause()
-	}
-	//s.cm.Pause()
+	} */
+	s.cm.Pause()
 }
