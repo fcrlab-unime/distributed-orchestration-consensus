@@ -193,7 +193,7 @@ func (cm *ConsensusModule) Voting(command *Service, index ...int) {
 		/* choosingTime := time.Now() */
 		chosenId := cm.minLoadLevelMap()
 		if os.Getenv("TIME") == "1" {
-			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "CP", cm.StartTime)
+			cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "CP", cm.StartTime)
 		}
 		/* choosingDuration := time.Since(choosingTime)
 		f, err := os.OpenFile(fmt.Sprintf("/log/choosingTime-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
@@ -261,7 +261,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 		/* writeLogTime := time.Now() */
 		cm.storage.Set(termData, cm.CheckCMId(log.LeaderId))
 		if os.Getenv("TIME") == "1" && cm.CheckCMId(log.LeaderId) && index != nil {
-			cm.server.Times[index[0]].SetDurationAndWrite(index[0], "WL", cm.StartTime)
+			cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "WL", cm.StartTime)
 		}
 		/* writeLogDuration := time.Since(writeLogTime)
 		f, err := os.OpenFile("/log/writeLog.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
@@ -280,7 +280,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 					fmt.Println("Leader execution")
 					go Exec(termData["Command"].(Service).ServiceID)
 					if os.Getenv("TIME") == "1" && index != nil {
-						cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TRE", cm.StartTime)
+						cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "TRE", cm.StartTime)
 					}
 				} else {
 					file, _ := os.ReadFile("services/" + termData["Command"].(Service).ServiceID)
@@ -293,7 +293,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 						cm.server.Times[index[0]].SetStartTime("TR")
 					}
 					if err := cm.server.Call(chosenId, "ConsensusModule.Deploy", args, &reply); err == nil && os.Getenv("TIME") == "1" && index != nil {
-						cm.server.Times[index[0]].SetDurationAndWrite(index[0], "TR", cm.StartTime)
+						cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "TR", cm.StartTime)
 					}
 					/* cm.server.Call(chosenId, "ConsensusModule.Deploy", args, &reply) */
 				}
@@ -724,7 +724,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							// leader's clients, and notify followers by sending them AEs.
 							cm.Mu.Unlock()
 							if os.Getenv("TIME") == "1" && index != nil {
-								cm.server.Times[index[0]].SetDurationAndWrite(index[0], "VCNVE", cm.StartTime)
+								cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "VCNVE", cm.StartTime)
 								cm.persistToStorage(cm.log[savedCommitIndex+1:cm.commitIndex+1], index[0])
 							} else {
 								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
