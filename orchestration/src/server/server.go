@@ -39,7 +39,8 @@ type Server struct {
 	quit  chan interface{}
 	wg    sync.WaitGroup
 
-	Times map[int]*test.Times
+	Times    map[int]*test.Times
+	toSubmit []Service
 }
 
 func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
@@ -53,8 +54,17 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
 	s.Times = make(map[int]*test.Times)
+	s.toSubmit = []Service{}
 	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
 	return s
+}
+
+func (s *Server) AddService(service Service) {
+	s.toSubmit = append(s.toSubmit, service)
+}
+
+func (s *Server) deleteDeployedService() {
+	s.toSubmit = s.toSubmit[1:]
 }
 
 func (s *Server) Serve(ip net.Addr, wg *sync.WaitGroup, ready chan interface{}) {
@@ -264,5 +274,8 @@ func (s *Server) Submit(command *Service, index ...int) {
 	}
 	/* s.cm.Voting(command) */
 	<-s.cm.VotingChan
-	s.cm.Pause()
+	if len(s.toSubmit) == 0 {
+		s.cm.Pause()
+	}
+	//s.cm.Pause()
 }

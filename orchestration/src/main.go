@@ -147,10 +147,11 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	for _, service := range services {
 		// Creates different instances for each request
 		command := s.NewService(service, server)
+		server.AddService(command)
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
 				server.Times[index[0]].SetDurationAndWrite(index[0], "RE", server.GetConsensusModule().StartTime)
-				server.Submit(command, index[0])
+				server.Submit(command, index)
 			} else {
 				server.Submit(command)
 			}

@@ -297,6 +297,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 					}
 					/* cm.server.Call(chosenId, "ConsensusModule.Deploy", args, &reply) */
 				}
+				cm.server.deleteDeployedService()
 			}
 		}
 	}
