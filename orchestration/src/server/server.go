@@ -282,5 +282,5 @@ func (s *Server) Submit(command *Service, index ...int) {
 	/* if len(s.toSubmit) == 0 {
 		s.cm.Pause()
 	} */
-	s.cm.Pause()
+	//s.cm.Pause()
 }
