@@ -151,7 +151,7 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		fmt.Println("Service added to the queue.")
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
-				server.Times[index[0]].SetDurationAndWrite(server.cm.currentTerm, "RE", server.GetConsensusModule().StartTime)
+				server.Times[index[0]].SetDurationAndWrite(server.GetConsensusModule().currentTerm, "RE", server.GetConsensusModule().StartTime)
 				server.Submit(command, index[0])
 			} else {
 				server.Submit(command)
