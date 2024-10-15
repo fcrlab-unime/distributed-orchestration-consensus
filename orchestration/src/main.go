@@ -151,7 +151,7 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
 				server.Times[index[0]].SetDurationAndWrite(index[0], "RE", server.GetConsensusModule().StartTime)
-				server.Submit(command, index)
+				server.Submit(command, index[0])
 			} else {
 				server.Submit(command)
 			}
