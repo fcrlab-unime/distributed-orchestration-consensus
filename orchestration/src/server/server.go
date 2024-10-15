@@ -64,7 +64,11 @@ func (s *Server) AddService(service *Service) {
 }
 
 func (s *Server) deleteDeployedService() {
-	s.toSubmit = s.toSubmit[1:]
+	if len(s.toSubmit) > 1 {
+		s.toSubmit = s.toSubmit[1:]
+	} else {
+		s.toSubmit = []Service{}
+	}
 }
 
 func (s *Server) Serve(ip net.Addr, wg *sync.WaitGroup, ready chan interface{}) {
