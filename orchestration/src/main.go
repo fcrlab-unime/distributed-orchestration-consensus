@@ -129,7 +129,7 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	if err != nil {
 		return
 	}
-	first := true
+
 	/* parseTime := time.Now() */
 	// Parses the request
 	services, err := parseMessage(string(buf[0:n]))
@@ -145,7 +145,11 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	f.WriteString(fmt.Sprintf("%v,%v\n", parseTime, parseDuration))
 	f.Close() */
 
+	first := true
 	for _, service := range services {
+		if os.Getenv("DEBUG") == "1" {
+			fmt.Println("Entering loop with first =", first)
+		}
 		// Creates different instances for each request
 		command := s.NewService(service, server)
 		//server.AddService(command)
