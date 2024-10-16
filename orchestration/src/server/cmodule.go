@@ -384,7 +384,7 @@ type AppendEntriesReply struct {
 
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	cm.Mu.Lock()
-	cm.Dlog("Function AppendEntries acquired lock on CM")
+	cm.Dlog("Function AppendEntries acquired lock on CM - beginnig")
 	defer cm.Mu.Unlock()
 	voteElabTime := time.Now()
 	if cm.state == Dead {
@@ -443,11 +443,13 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
 				cm.Mu.Unlock()
-				cm.Dlog("Function AppendEntries released lock on CM")
+				cm.Dlog("Function AppendEntries released lock on CM - before commit ready chan")
 				cm.newCommitReadyChan <- struct{}{}
+				cm.Dlog("Function AppendEntries has put a structure inside commit ready chan")
 				<-cm.commitSendDoneChan
+				cm.Dlog("Function AppendEntries is going to acquire lock on CM - after commit ready chan")
 				cm.Mu.Lock()
-				cm.Dlog("Function AppendEntries acquired lock on CM")
+				cm.Dlog("Function AppendEntries acquired lock on CM - after commit ready chan")
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -475,7 +477,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteElabTime)
 	cm.Dlog("AppendEntries reply: %+v", *reply)
-	cm.Dlog("Function AppendEntries released lock on CM")
+	cm.Dlog("Function AppendEntries released lock on CM - end")
 	return nil
 }
 
@@ -773,6 +775,7 @@ func (cm *ConsensusModule) lastLogIndexAndTerm() (int, int) {
 func (cm *ConsensusModule) commitChanSender() {
 	for {
 		<-cm.newCommitReadyChan
+		cm.Dlog("commitChanSender triggered")
 		// Find which entries we have to apply.
 		cm.Mu.Lock()
 		cm.Dlog("Function commitChanSender acquired lock on CM")
