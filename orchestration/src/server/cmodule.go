@@ -818,19 +818,19 @@ func (cm *ConsensusModule) MonitorLoad() {
 	var load int
 	for {
 		cm.Mu.Lock()
-		cm.Dlog("Function MonitorLoad acquired lock on CM")
+		//cm.Dlog("Function MonitorLoad acquired lock on CM")
 		load, cpu = l.GetLoadLevel()
 		cm.Mu.Unlock()
-		cm.Dlog("Function MonitorLoad released lock on CM")
+		//cm.Dlog("Function MonitorLoad released lock on CM")
 		select {
 		case <-cm.CPUChan:
 			go cm.MonitorForTest(&cpu)
 		default:
 			cm.Mu.Lock()
-			cm.Dlog("Function MonitorLoad acquired lock on CM")
+			//cm.Dlog("Function MonitorLoad acquired lock on CM")
 			cm.loadLevel = load
 			cm.Mu.Unlock()
-			cm.Dlog("Function MonitorLoad released lock on CM")
+			//cm.Dlog("Function MonitorLoad released lock on CM")
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
@@ -855,10 +855,10 @@ func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
 		timer.Reset(8 * time.Millisecond)
 		when := time.Since(cm.StartTime)
 		cm.Mu.Lock()
-		cm.Dlog("Function MonitorForTest acquired lock on CM")
+		//cm.Dlog("Function MonitorForTest acquired lock on CM")
 		f.WriteString(fmt.Sprintf("%v,%.2f\n", when, *cpu))
 		cm.Mu.Unlock()
-		cm.Dlog("Function MonitorForTest released lock on CM")
+		//cm.Dlog("Function MonitorForTest released lock on CM")
 	}
 }
 
