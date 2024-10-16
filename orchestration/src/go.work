@@ -1,6 +1,11 @@
-go 1.21
+go 1.22.0
 
-use ./server
-use ./log
-use ./namesgenerator
-use ./test
+toolchain go1.22.8
+
+use (
+	.
+	./log
+	./namesgenerator
+	./server
+	./test
+)
