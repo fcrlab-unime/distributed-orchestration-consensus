@@ -729,7 +729,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							} else {
 								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							}
-							cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
+							//cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
 						} else {
