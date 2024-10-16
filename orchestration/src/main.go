@@ -122,6 +122,9 @@ func waitStart(server *s.Server) {
 }
 
 func handleConnection(conn net.Conn, server *s.Server, index ...int) {
+	if os.Getenv("DEBUG") == "1" {
+		fmt.Println("Handling connection.")
+	}
 	defer conn.Close()
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf[0:])
@@ -144,7 +147,9 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	}
 	f.WriteString(fmt.Sprintf("%v,%v\n", parseTime, parseDuration))
 	f.Close() */
-
+	if os.Getenv("DEBUG") == "1" {
+		fmt.Println("Setting first to true.")
+	}
 	first := true
 	for _, service := range services {
 		if os.Getenv("DEBUG") == "1" {
