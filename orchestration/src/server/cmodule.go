@@ -453,6 +453,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
 				cm.Mu.Lock()
+				defer cm.Mu.Unlock() //debug try
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
