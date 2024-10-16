@@ -96,6 +96,7 @@ func waitStart(server *s.Server) {
 
 	// Counter of the accepted connections
 	index := 1
+	server.submitChan <- struct{}{}
 
 	for {
 		conn, err := listener.Accept()
@@ -148,7 +149,8 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		// Creates different instances for each request
 		command := s.NewService(service, server)
 		//server.AddService(command)
-		fmt.Println("Service added to the queue.")
+		//fmt.Println("Service added to the queue.")
+		<-s.submitChan
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
 				server.Times[index[0]].SetDurationAndWrite(index[0], "RE", server.GetConsensusModule().StartTime)
