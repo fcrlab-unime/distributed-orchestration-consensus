@@ -122,6 +122,7 @@ type ConsensusModule struct {
 	// that commit new entries to the log to notify that these entries may be sent
 	// on commitChan.
 	newCommitReadyChan chan struct{}
+	commitSendDoneChan chan struct{}
 
 	// triggerAEChan is an internal notification channel used to trigger
 	// sending new AEs to followers when interesting changes occurred.
@@ -159,6 +160,7 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.CPUChan = make(chan interface{}, 1)
 	cm.StartTime = time.Now()
 	cm.newCommitReadyChan = make(chan struct{})
+	cm.commitSendDoneChan = make(chan struct{})
 	cm.chosenChan = make(chan interface{}, 1)
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
@@ -449,10 +451,11 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 			// Set commit index.
 			if args.LeaderCommit > cm.commitIndex {
-				cm.commitIndex = intMin(args.LeaderCommit+1, len(cm.log)-1)
+				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
 				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
+				<-cm.commitSendDoneChan
 				cm.Mu.Lock()
 			}
 		} else {
@@ -796,7 +799,7 @@ func (cm *ConsensusModule) commitChanSender() {
 		}
 		cm.Mu.Unlock()
 		cm.Dlog("commitChanSender entries=%v, savedLastApplied=%d", entries, savedLastApplied)
-
+		cm.commitSendDoneChan <- struct{}{}
 		for i, entry := range entries {
 			cm.commitChan <- CommitEntry{
 				Command:  entry.Command,
