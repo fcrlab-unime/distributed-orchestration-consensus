@@ -179,9 +179,9 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 // Report reports the state of this CM.
 func (cm *ConsensusModule) Report() (id int, term int, isLeader bool) {
 	cm.Mu.Lock()
-	cd.Dlog("Function Report acquired lock on CM")
+	cm.Dlog("Function Report acquired lock on CM")
 	defer cm.Mu.Unlock()
-	cd.Dlog("Function Report released lock on CM")
+	cm.Dlog("Function Report released lock on CM")
 	return cm.id, cm.currentTerm, cm.state == Leader
 }
 
@@ -259,18 +259,10 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 		termData["Id"] = log.Index
 		termData["Timestamp"] = log.Timestamp
 
-		/* writeLogTime := time.Now() */
 		cm.storage.Set(termData, cm.CheckCMId(log.LeaderId))
 		if os.Getenv("TIME") == "1" && cm.CheckCMId(log.LeaderId) && index != nil {
 			cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "WL", cm.StartTime)
 		}
-		/* writeLogDuration := time.Since(writeLogTime)
-		f, err := os.OpenFile("/log/writeLog.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-		if err != nil {
-			panic(err)
-		}
-		f.WriteString(fmt.Sprintf("%v,%v\n", writeLogTime, writeLogDuration))
-		f.Close() */
 
 		if log.Term >= cm.currentTerm {
 			leaderId := log.LeaderId
@@ -296,7 +288,6 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 					if err := cm.server.Call(chosenId, "ConsensusModule.Deploy", args, &reply); err == nil && os.Getenv("TIME") == "1" && index != nil {
 						cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "TR", cm.StartTime)
 					}
-					/* cm.server.Call(chosenId, "ConsensusModule.Deploy", args, &reply) */
 				}
 				//cm.server.deleteDeployedService()
 				cm.server.SubmitChan <- struct{}{}
