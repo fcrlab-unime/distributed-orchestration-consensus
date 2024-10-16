@@ -453,10 +453,10 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if args.LeaderCommit > cm.commitIndex {
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
-				cm.Mu.Unlock()
+				//cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
 				<-cm.commitSendDoneChan
-				cm.Mu.Lock()
+				//cm.Mu.Lock()
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
