@@ -114,16 +114,6 @@ type ConsensusModule struct {
 	// chosenChan signals the CM that must execute some command
 	chosenChan chan interface{}
 
-	// commitChan is the channel where this CM is going to report committed log
-	// entries. It's passed in by the client during construction.
-	commitChan chan<- CommitEntry
-
-	// newCommitReadyChan is an internal notification channel used by goroutines
-	// that commit new entries to the log to notify that these entries may be sent
-	// on commitChan.
-	newCommitReadyChan chan struct{}
-	commitSendDoneChan chan struct{}
-
 	// triggerAEChan is an internal notification channel used to trigger
 	// sending new AEs to followers when interesting changes occurred.
 	triggerAEChan chan struct{}
@@ -147,20 +137,17 @@ type ConsensusModule struct {
 // server. The ready channel signals the CM that all peers are connected and
 // it's safe to start its state machine. commitChan is going to be used by the
 // CM to send log entries that have been committed by the Raft cluster.
-func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *ConsensusModule {
+func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan interface{}) *ConsensusModule {
 	cm := new(ConsensusModule)
 	cm.id = id
 	cm.peerIds = []int{}
 	cm.server = server
 	cm.storage = storage
 	cm.loadLevelMap = make(map[int]int)
-	cm.commitChan = commitChan
 	cm.ElectionChan = make(chan interface{}, 1)
 	cm.VotingChan = make(chan interface{}, 1)
 	cm.CPUChan = make(chan interface{}, 1)
 	cm.StartTime = time.Now()
-	cm.newCommitReadyChan = make(chan struct{})
-	cm.commitSendDoneChan = make(chan struct{})
 	cm.chosenChan = make(chan interface{}, 1)
 	cm.triggerAEChan = make(chan struct{}, 1)
 	cm.state = Follower
@@ -222,7 +209,6 @@ func (cm *ConsensusModule) Stop() {
 	defer cm.Mu.Unlock()
 	cm.state = Dead
 	cm.Dlog("becomes Dead")
-	close(cm.newCommitReadyChan)
 	cm.Dlog("Funtion Stop released lock on CM")
 }
 
@@ -766,41 +752,6 @@ func (cm *ConsensusModule) lastLogIndexAndTerm() (int, int) {
 	}
 }
 
-// commitChanSender is responsible for sending committed entries on
-// cm.commitChan. It watches newCommitReadyChan for notifications and calculates
-// which new entries are ready to be sent. This method should run in a separate
-// background goroutine; cm.commitChan may be buffered and will limit how fast
-// the client consumes new committed entries. Returns when newCommitReadyChan is
-// closed.
-/* func (cm *ConsensusModule) commitChanSender() {
-	for {
-		<-cm.newCommitReadyChan
-		cm.Dlog("commitChanSender triggered")
-		// Find which entries we have to apply.
-		cm.Mu.Lock()
-		cm.Dlog("Function commitChanSender acquired lock on CM")
-		savedTerm := cm.currentTerm
-		savedLastApplied := cm.lastApplied
-		var entries []LogEntry
-		if cm.commitIndex > cm.lastApplied {
-			entries = cm.log[cm.lastApplied+1 : cm.commitIndex+1]
-			cm.lastApplied = cm.commitIndex
-		}
-		cm.Mu.Unlock()
-		cm.Dlog("Function commitChanSender released lock on CM")
-		cm.Dlog("commitChanSender entries=%v, savedLastApplied=%d", entries, savedLastApplied)
-		cm.commitSendDoneChan <- struct{}{}
-		for i, entry := range entries {
-			cm.commitChan <- CommitEntry{
-				Command:  entry.Command,
-				Index:    savedLastApplied + i + 1,
-				Term:     savedTerm,
-				ChosenId: entry.ChosenId,
-			}
-		}
-	}
-} */
-
 func intMin(a, b int) int {
 	if a < b {
 		return a
@@ -850,9 +801,6 @@ func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
 		panic(err)
 	}
 	f.WriteString("Times,Perc\n")
-	if err != nil {
-		panic(err)
-	}
 	for {
 		<-timer.C
 		timer.Reset(8 * time.Millisecond)

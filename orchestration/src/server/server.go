@@ -57,7 +57,7 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.Times = make(map[int]*test.Times)
 	//s.toSubmit = []Service{}
 	s.SubmitChan = make(chan struct{})
-	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready, s.commitChan)
+	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready)
 	return s
 }
 
