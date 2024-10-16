@@ -449,7 +449,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 			// Set commit index.
 			if args.LeaderCommit > cm.commitIndex {
-				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
+				cm.commitIndex = intMin(args.LeaderCommit+1, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
 				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
