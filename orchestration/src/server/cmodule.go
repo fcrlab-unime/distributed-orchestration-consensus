@@ -396,7 +396,7 @@ type AppendEntriesReply struct {
 
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	cm.Mu.Lock()
-	//defer cm.Mu.Unlock()
+	defer cm.Mu.Unlock()
 	voteElabTime := time.Now()
 	if cm.state == Dead {
 		return nil
@@ -462,7 +462,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			// No match for PrevLogIndex/PrevLogTerm. Populate
 			// ConflictIndex/ConflictTerm to help the leader bring us up to date
 			// quickly.
-			cm.Mu.Unlock()
 			if args.PrevLogIndex >= len(cm.log) {
 				reply.ConflictIndex = len(cm.log)
 				reply.ConflictTerm = -1
