@@ -151,6 +151,9 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		//server.AddService(command)
 		//fmt.Println("Service added to the queue.")
 		if first {
+			if os.Getenv("DEBUG") == "1" {
+				fmt.Println("First request received")
+			}
 			first = false
 			server.SubmitChan <- struct{}{}
 		}
