@@ -192,18 +192,10 @@ func (cm *ConsensusModule) Voting(command *Service, index ...int) {
 	cm.Mu.Lock()
 	cm.Dlog("Voting received: %v", command)
 	if cm.state == Leader {
-		/* choosingTime := time.Now() */
 		chosenId := cm.minLoadLevelMap()
 		if os.Getenv("TIME") == "1" {
 			cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "CP", cm.StartTime)
 		}
-		/* choosingDuration := time.Since(choosingTime)
-		f, err := os.OpenFile(fmt.Sprintf("/log/choosingTime-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-		if err != nil {
-			panic(err)
-		}
-		f.WriteString(fmt.Sprintf("%v,%v\n", choosingTime, choosingDuration))
-		f.Close() */
 		newLog := cm.NewLog(command, chosenId)
 		cm.log = append(cm.log, newLog)
 
@@ -279,6 +271,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 			isLeader, isChosen := cm.CheckCMId(leaderId), cm.CheckCMId(chosenId)
 			if isLeader {
 				if isChosen {
+					if cm.Mu.
 					fmt.Println("Leader execution")
 					go Exec(termData["Command"].(Service).ServiceID)
 					if os.Getenv("TIME") == "1" && index != nil {
@@ -453,10 +446,10 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if args.LeaderCommit > cm.commitIndex {
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
-				//cm.Mu.Unlock()
+				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
 				<-cm.commitSendDoneChan
-				//cm.Mu.Lock()
+				cm.Mu.Lock()
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -483,12 +476,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteElabTime)
-	/* f, err := os.OpenFile(fmt.Sprintf("/log/appendEntryElab-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		panic(err)
-	}
-	f.WriteString(fmt.Sprintf("%v\n", reply.VoteElabTime))
-	f.Close() */
 	cm.Dlog("AppendEntries reply: %+v", *reply)
 
 	return nil
@@ -529,19 +516,10 @@ func (cm *ConsensusModule) Election(index ...int) {
 
 			cm.Dlog("sending RequestVote to %d: %+v", peerId, args)
 			var reply RequestVoteReply
-			/* electionStartTime := time.Now() */
 			if os.Getenv("TIME") == "1" {
 				cm.server.Times[index[0]].SetStartTime("EN1", t)
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
-				/* roundTripTime := time.Since(electionStartTime)
-				electionNetTime := roundTripTime - reply.VoteElabTime
-				f, err := os.OpenFile(fmt.Sprintf("/log/electionNetwork-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-				if err != nil {
-					panic(err)
-				}
-				f.WriteString(fmt.Sprintf("%v,%v\n", electionStartTime, electionNetTime))
-				f.Close() */
 				cm.Mu.Lock()
 				if os.Getenv("TIME") == "1" {
 					cm.server.Times[index[0]].Mu.Lock()
@@ -577,7 +555,6 @@ func (cm *ConsensusModule) Election(index ...int) {
 							} else {
 								cm.startLeader()
 							}
-							/* cm.startLeader() */
 							return
 						}
 					}
@@ -674,19 +651,10 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 			cm.Mu.Unlock()
 			cm.Dlog("sending AppendEntries to %v: ni=%d, args=%+v", peerId, ni, args)
 			var reply AppendEntriesReply
-			/* appendEntryStartTime := time.Now() */
 			if os.Getenv("TIME") == "1" && index != nil {
 				cm.server.Times[index[0]].SetStartTime("VCN1", t)
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
-				/* roundTripTime := time.Since(appendEntryStartTime)
-				appendEntryNetTime := roundTripTime - reply.VoteElabTime
-				f, err := os.OpenFile(fmt.Sprintf("/log/appendEntryNetwork-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-				if err != nil {
-					panic(err)
-				}
-				f.WriteString(fmt.Sprintf("%v,%v\n", appendEntryStartTime, appendEntryNetTime))
-				f.Close() */
 				cm.Mu.Lock()
 				if os.Getenv("TIME") == "1" && index != nil {
 					cm.server.Times[index[0]].Mu.Lock()
