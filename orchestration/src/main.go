@@ -96,7 +96,9 @@ func waitStart(server *s.Server) {
 
 	// Counter of the accepted connections
 	index := 1
-	server.SubmitChan <- struct{}{}
+	go func() {
+		server.SubmitChan <- struct{}{} // Invio non bloccante tramite goroutine
+	}()
 
 	for {
 		conn, err := listener.Accept()
@@ -122,9 +124,6 @@ func waitStart(server *s.Server) {
 }
 
 func handleConnection(conn net.Conn, server *s.Server, index ...int) {
-	if os.Getenv("DEBUG") == "1" {
-		fmt.Println("Handling connection.")
-	}
 	defer conn.Close()
 	buf := make([]byte, 4096)
 	n, err := conn.Read(buf[0:])
@@ -147,10 +146,6 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	}
 	f.WriteString(fmt.Sprintf("%v,%v\n", parseTime, parseDuration))
 	f.Close() */
-	if os.Getenv("DEBUG") == "1" {
-		fmt.Println("Setting first to true.")
-	}
-	first := true
 	for _, service := range services {
 		if os.Getenv("DEBUG") == "1" {
 			fmt.Println("Entering loop with first =", first)
@@ -159,13 +154,6 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		command := s.NewService(service, server)
 		//server.AddService(command)
 		//fmt.Println("Service added to the queue.")
-		if first {
-			if os.Getenv("DEBUG") == "1" {
-				fmt.Println("First request received")
-			}
-			first = false
-			server.SubmitChan <- struct{}{}
-		}
 		<-server.SubmitChan
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
