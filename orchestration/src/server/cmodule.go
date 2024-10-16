@@ -179,7 +179,9 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 // Report reports the state of this CM.
 func (cm *ConsensusModule) Report() (id int, term int, isLeader bool) {
 	cm.Mu.Lock()
+	cd.Dlog("Function Report acquired lock on CM")
 	defer cm.Mu.Unlock()
+	cd.Dlog("Function Report released lock on CM")
 	return cm.id, cm.currentTerm, cm.state == Leader
 }
 
@@ -190,6 +192,7 @@ func (cm *ConsensusModule) Report() (id int, term int, isLeader bool) {
 // a different CM to submit this command to.
 func (cm *ConsensusModule) Voting(command *Service, index ...int) {
 	cm.Mu.Lock()
+	cm.Dlog("Function voting acquired lock on CM")
 	cm.Dlog("Voting received: %v", command)
 	if cm.state == Leader {
 		chosenId := cm.minLoadLevelMap()
@@ -200,10 +203,12 @@ func (cm *ConsensusModule) Voting(command *Service, index ...int) {
 		cm.log = append(cm.log, newLog)
 
 		cm.Mu.Unlock()
+		cm.Dlog("Function voting released lock on CM")
 		cm.Dlog("... log=%v", cm.log)
 		cm.triggerAEChan <- struct{}{}
 	} else {
 		cm.Mu.Unlock()
+		cm.Dlog("Function voting released lock on CM")
 	}
 	cm.VotingChan <- struct{}{}
 }
@@ -213,10 +218,12 @@ func (cm *ConsensusModule) Voting(command *Service, index ...int) {
 // exit.
 func (cm *ConsensusModule) Stop() {
 	cm.Mu.Lock()
+	cm.Dlog("Function Stop acquired lock on CM")
 	defer cm.Mu.Unlock()
 	cm.state = Dead
 	cm.Dlog("becomes Dead")
 	close(cm.newCommitReadyChan)
+	cm.Dlog("Funtion Stop released lock on CM")
 }
 
 type DeployArgs struct {
@@ -271,7 +278,6 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 			isLeader, isChosen := cm.CheckCMId(leaderId), cm.CheckCMId(chosenId)
 			if isLeader {
 				if isChosen {
-					if cm.Mu.
 					fmt.Println("Leader execution")
 					go Exec(termData["Command"].(Service).ServiceID)
 					if os.Getenv("TIME") == "1" && index != nil {
@@ -325,6 +331,7 @@ type RequestVoteReply struct {
 // RequestVote RPC.
 func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
 	cm.Mu.Lock()
+	cm.Dlog("Function RequestVote acquired lock on CM")
 	voteTime := time.Now()
 	defer cm.Mu.Unlock()
 	if cm.state == Dead {
@@ -339,10 +346,12 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	}
 
 	cm.Mu.Unlock()
+	cm.Dlog("Function RequestVote released lock on CM")
 	if cm.state != Candidate {
 		runVoteDelay(args.LoadLevel)
 	}
 	cm.Mu.Lock()
+	cm.Dlog("Function RequestVote acquired lock on CM")
 	if cm.currentTerm == args.Term &&
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
 		(args.LastLogTerm > lastLogTerm ||
@@ -356,13 +365,8 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	}
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteTime)
-	/* f, err := os.OpenFile(fmt.Sprintf("/log/voteElection-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		panic(err)
-	}
-	f.WriteString(fmt.Sprintf("%v\n", reply.VoteElabTime))
-	f.Close() */
 	cm.Dlog("... RequestVote reply: %+v", reply)
+	cm.Dlog("Function RequestVote released lock on CM")
 	return nil
 }
 
@@ -389,6 +393,7 @@ type AppendEntriesReply struct {
 
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	cm.Mu.Lock()
+	cm.Dlog("Function AppendEntries acquired lock on CM")
 	defer cm.Mu.Unlock()
 	voteElabTime := time.Now()
 	if cm.state == Dead {
@@ -447,9 +452,11 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
 				cm.Mu.Unlock()
+				cm.Dlog("Function AppendEntries released lock on CM")
 				cm.newCommitReadyChan <- struct{}{}
 				<-cm.commitSendDoneChan
 				cm.Mu.Lock()
+				cm.Dlog("Function AppendEntries acquired lock on CM")
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -477,7 +484,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteElabTime)
 	cm.Dlog("AppendEntries reply: %+v", *reply)
-
+	cm.Dlog("Function AppendEntries released lock on CM")
 	return nil
 }
 
@@ -490,6 +497,7 @@ func runVoteDelay(loadLevel int) {
 // Expects cm.Mu to be locked.
 func (cm *ConsensusModule) Election(index ...int) {
 	cm.Mu.Lock()
+	cm.Dlog("Function Election acquired lock on CM")
 	defer cm.Mu.Unlock()
 	cm.state = Candidate
 	cm.currentTerm += 1
@@ -503,8 +511,10 @@ func (cm *ConsensusModule) Election(index ...int) {
 	for t, peerId := range cm.peerIds {
 		go func(peerId int, t int) {
 			cm.Mu.Lock()
+			cm.Dlog("Function inside Election acquired lock on CM")
 			savedLastLogIndex, savedLastLogTerm := cm.lastLogIndexAndTerm()
 			cm.Mu.Unlock()
+			cm.Dlog("Function inside Election released lock on CM")
 
 			args := RequestVoteArgs{
 				Term:         savedCurrentTerm,
@@ -521,6 +531,7 @@ func (cm *ConsensusModule) Election(index ...int) {
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
 				cm.Mu.Lock()
+				cm.Dlog("Function inside Election acquired lock on CM")
 				if os.Getenv("TIME") == "1" {
 					cm.server.Times[index[0]].Mu.Lock()
 					cm.server.Times[index[0]].ElectionNetworkDurations[t] = time.Since(cm.server.Times[index[0]].ElectionNetworkStartTimes[t])
@@ -560,6 +571,7 @@ func (cm *ConsensusModule) Election(index ...int) {
 					}
 				}
 			}
+			cm.Dlog("Function inside Election released lock on CM")
 		}(peerId, t)
 	}
 
@@ -598,11 +610,14 @@ func (cm *ConsensusModule) startLeader(index ...int) {
 				return
 			case <-cm.triggerAEChan:
 				cm.Mu.Lock()
+				cm.Dlog("Function startLeader acquired lock on CM")
 				if cm.state != Leader {
 					cm.Mu.Unlock()
+					cm.Dlog("Function startLeader released lock on CM")
 					return
 				}
 				cm.Mu.Unlock()
+				cm.Dlog("Function startLeader released lock on CM")
 				if os.Getenv("TIME") == "1" {
 					cm.leaderSendAEs(index[0])
 				} else {
@@ -618,15 +633,19 @@ func (cm *ConsensusModule) startLeader(index ...int) {
 // replies and adjusts cm's state.
 func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 	cm.Mu.Lock()
+	cm.Dlog("Function leaderSendAEs acquired lock on CM")
 	if cm.state != Leader {
 		cm.Mu.Unlock()
+		cm.Dlog("Function leaderSendAEs released lock on CM")
 		return
 	}
 	savedCurrentTerm := cm.currentTerm
 	cm.Mu.Unlock()
+	cm.Dlog("Function leaderSendAEs released lock on CM")
 	for t, peerId := range cm.peerIds {
 		go func(peerId int, t int) {
 			cm.Mu.Lock()
+			cm.Dlog("Function inside leaderSendAEs acquired lock on CM")
 			ni := cm.nextIndex[peerId]
 			prevLogIndex := ni - 1
 			prevLogTerm := -1
@@ -649,6 +668,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 				ChosenId:     chosenId,
 			}
 			cm.Mu.Unlock()
+			cm.Dlog("Function inside leaderSendAEs released lock on CM")
 			cm.Dlog("sending AppendEntries to %v: ni=%d, args=%+v", peerId, ni, args)
 			var reply AppendEntriesReply
 			if os.Getenv("TIME") == "1" && index != nil {
@@ -656,6 +676,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
 				cm.Mu.Lock()
+				cm.Dlog("Function inside leaderSendAEs acquired lock on CM")
 				if os.Getenv("TIME") == "1" && index != nil {
 					cm.server.Times[index[0]].Mu.Lock()
 					cm.server.Times[index[0]].VoteConsNetDurations[t] = time.Since(cm.server.Times[index[0]].VoteConsNetStartTimes[t])
@@ -666,6 +687,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 					cm.Dlog("term out of date in heartbeat reply")
 					cm.becomeFollower(reply.Term)
 					cm.Mu.Unlock()
+					cm.Dlog("Function inside leaderSendAEs released lock on CM")
 					return
 				}
 
@@ -695,6 +717,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							// committed. Send new entries on the commit channel to this
 							// leader's clients, and notify followers by sending them AEs.
 							cm.Mu.Unlock()
+							cm.Dlog("Function inside leaderSendAEs released lock on CM")
 							if os.Getenv("TIME") == "1" && index != nil {
 								cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "VCNVE", cm.StartTime)
 								cm.persistToStorage(cm.log[savedCommitIndex+1:cm.commitIndex+1], index[0])
@@ -706,6 +729,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							cm.triggerAEChan <- struct{}{}
 						} else {
 							cm.Mu.Unlock()
+							cm.Dlog("Function inside leaderSendAEs released lock on CM")
 						}
 					} else {
 						if reply.ConflictTerm >= 0 {
@@ -726,9 +750,11 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 						}
 						cm.Dlog("AppendEntries reply from %d !success: nextIndex := %d", peerId, ni-1)
 						cm.Mu.Unlock()
+						cm.Dlog("Function inside leaderSendAEs released lock on CM")
 					}
 				} else {
 					cm.Mu.Unlock()
+					cm.Dlog("Function inside leaderSendAEs released lock on CM")
 				}
 			}
 		}(peerId, t)
@@ -758,6 +784,7 @@ func (cm *ConsensusModule) commitChanSender() {
 		<-cm.newCommitReadyChan
 		// Find which entries we have to apply.
 		cm.Mu.Lock()
+		cm.Dlog("Function commitChanSender acquired lock on CM")
 		savedTerm := cm.currentTerm
 		savedLastApplied := cm.lastApplied
 		var entries []LogEntry
@@ -766,6 +793,7 @@ func (cm *ConsensusModule) commitChanSender() {
 			cm.lastApplied = cm.commitIndex
 		}
 		cm.Mu.Unlock()
+		cm.Dlog("Function commitChanSender released lock on CM")
 		cm.Dlog("commitChanSender entries=%v, savedLastApplied=%d", entries, savedLastApplied)
 		cm.commitSendDoneChan <- struct{}{}
 		for i, entry := range entries {
@@ -788,8 +816,10 @@ func intMin(a, b int) int {
 
 func (cm *ConsensusModule) Pause() {
 	cm.Mu.Lock()
+	cm.Dlog("Function Pause acquired lock on CM")
 	cm.stopSendingAEsChan <- struct{}{}
 	cm.Mu.Unlock()
+	cm.Dlog("Function Pause released lock on CM")
 }
 
 func (cm *ConsensusModule) MonitorLoad() {
@@ -797,15 +827,19 @@ func (cm *ConsensusModule) MonitorLoad() {
 	var load int
 	for {
 		cm.Mu.Lock()
+		cm.Dlog("Function MonitorLoad acquired lock on CM")
 		load, cpu = l.GetLoadLevel()
 		cm.Mu.Unlock()
+		cm.Dlog("Function MonitorLoad released lock on CM")
 		select {
 		case <-cm.CPUChan:
 			go cm.MonitorForTest(&cpu)
 		default:
 			cm.Mu.Lock()
+			cm.Dlog("Function MonitorLoad acquired lock on CM")
 			cm.loadLevel = load
 			cm.Mu.Unlock()
+			cm.Dlog("Function MonitorLoad released lock on CM")
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
@@ -830,8 +864,10 @@ func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
 		timer.Reset(8 * time.Millisecond)
 		when := time.Since(cm.StartTime)
 		cm.Mu.Lock()
+		cm.Dlog("Function MonitorForTest acquired lock on CM")
 		f.WriteString(fmt.Sprintf("%v,%.2f\n", when, *cpu))
 		cm.Mu.Unlock()
+		cm.Dlog("Function MonitorForTest released lock on CM")
 	}
 }
 
@@ -848,8 +884,10 @@ func (cm *ConsensusModule) DisconnectPeer(peerId int) {
 
 func (cm *ConsensusModule) ConnectPeer(peerId int) {
 	cm.Mu.Lock()
+	cm.Dlog("Function ConnectPeer acquired lock on CM")
 	cm.peerIds = append(cm.peerIds, peerId)
 	cm.Mu.Unlock()
+	cm.Dlog("Function ConnectPeer released lock on CM")
 }
 
 func (cm *ConsensusModule) CheckCMId(peerId int) bool {
