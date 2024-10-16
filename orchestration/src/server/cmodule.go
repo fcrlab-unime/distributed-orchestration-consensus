@@ -172,7 +172,7 @@ func NewConsensusModule(id int, server *Server, storage st.Storage, ready <-chan
 	cm.nextIndex = make(map[int]int)
 	cm.matchIndex = make(map[int]int)
 
-	go cm.commitChanSender()
+	//go cm.commitChanSender()
 	return cm
 }
 
@@ -442,14 +442,14 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if args.LeaderCommit > cm.commitIndex {
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
-				cm.Mu.Unlock()
-				cm.Dlog("Function AppendEntries released lock on CM - before commit ready chan")
-				cm.newCommitReadyChan <- struct{}{}
-				cm.Dlog("Function AppendEntries has put a structure inside commit ready chan")
-				<-cm.commitSendDoneChan
-				cm.Dlog("Function AppendEntries is going to acquire lock on CM - after commit ready chan")
-				cm.Mu.Lock()
-				cm.Dlog("Function AppendEntries acquired lock on CM - after commit ready chan")
+				//cm.Mu.Unlock()
+				//cm.Dlog("Function AppendEntries released lock on CM - before commit ready chan")
+				//cm.newCommitReadyChan <- struct{}{}
+				//cm.Dlog("Function AppendEntries has put a structure inside commit ready chan")
+				//<-cm.commitSendDoneChan
+				//cm.Dlog("Function AppendEntries is going to acquire lock on CM - after commit ready chan")
+				//cm.Mu.Lock()
+				//cm.Dlog("Function AppendEntries acquired lock on CM - after commit ready chan")
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -718,7 +718,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							}
 							//cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
-							cm.newCommitReadyChan <- struct{}{}
+							//cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
 						} else {
 							cm.Mu.Unlock()
@@ -772,7 +772,7 @@ func (cm *ConsensusModule) lastLogIndexAndTerm() (int, int) {
 // background goroutine; cm.commitChan may be buffered and will limit how fast
 // the client consumes new committed entries. Returns when newCommitReadyChan is
 // closed.
-func (cm *ConsensusModule) commitChanSender() {
+/* func (cm *ConsensusModule) commitChanSender() {
 	for {
 		<-cm.newCommitReadyChan
 		cm.Dlog("commitChanSender triggered")
@@ -799,7 +799,7 @@ func (cm *ConsensusModule) commitChanSender() {
 			}
 		}
 	}
-}
+} */
 
 func intMin(a, b int) int {
 	if a < b {
