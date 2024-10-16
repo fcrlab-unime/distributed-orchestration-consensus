@@ -636,7 +636,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 	for t, peerId := range cm.peerIds {
 		go func(peerId int, t int) {
 			cm.Mu.Lock()
-			cm.Dlog("Function inside leaderSendAEs acquired lock on CM")
+			cm.Dlog("Function inside leaderSendAEs acquired lock on CM - 1")
 			ni := cm.nextIndex[peerId]
 			prevLogIndex := ni - 1
 			prevLogTerm := -1
@@ -659,7 +659,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 				ChosenId:     chosenId,
 			}
 			cm.Mu.Unlock()
-			cm.Dlog("Function inside leaderSendAEs released lock on CM")
+			cm.Dlog("Function inside leaderSendAEs released lock on CM - 1")
 			cm.Dlog("sending AppendEntries to %v: ni=%d, args=%+v", peerId, ni, args)
 			var reply AppendEntriesReply
 			if os.Getenv("TIME") == "1" && index != nil {
@@ -667,7 +667,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
 				cm.Mu.Lock()
-				cm.Dlog("Function inside leaderSendAEs acquired lock on CM")
+				cm.Dlog("Function inside leaderSendAEs acquired lock on CM -2")
 				if os.Getenv("TIME") == "1" && index != nil {
 					cm.server.Times[index[0]].Mu.Lock()
 					cm.server.Times[index[0]].VoteConsNetDurations[t] = time.Since(cm.server.Times[index[0]].VoteConsNetStartTimes[t])
@@ -678,7 +678,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 					cm.Dlog("term out of date in heartbeat reply")
 					cm.becomeFollower(reply.Term)
 					cm.Mu.Unlock()
-					cm.Dlog("Function inside leaderSendAEs released lock on CM")
+					cm.Dlog("Function inside leaderSendAEs released lock on CM - 2")
 					return
 				}
 
@@ -708,7 +708,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							// committed. Send new entries on the commit channel to this
 							// leader's clients, and notify followers by sending them AEs.
 							cm.Mu.Unlock()
-							cm.Dlog("Function inside leaderSendAEs released lock on CM")
+							cm.Dlog("Function inside leaderSendAEs released lock on CM - 3")
 							if os.Getenv("TIME") == "1" && index != nil {
 								cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "VCNVE", cm.StartTime)
 								cm.persistToStorage(cm.log[savedCommitIndex+1:cm.commitIndex+1], index[0])
@@ -720,7 +720,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							cm.triggerAEChan <- struct{}{}
 						} else {
 							cm.Mu.Unlock()
-							cm.Dlog("Function inside leaderSendAEs released lock on CM")
+							cm.Dlog("Function inside leaderSendAEs released lock on CM -3")
 						}
 					} else {
 						if reply.ConflictTerm >= 0 {
@@ -741,11 +741,11 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 						}
 						cm.Dlog("AppendEntries reply from %d !success: nextIndex := %d", peerId, ni-1)
 						cm.Mu.Unlock()
-						cm.Dlog("Function inside leaderSendAEs released lock on CM")
+						cm.Dlog("Function inside leaderSendAEs released lock on CM - 4")
 					}
 				} else {
 					cm.Mu.Unlock()
-					cm.Dlog("Function inside leaderSendAEs released lock on CM")
+					cm.Dlog("Function inside leaderSendAEs released lock on CM - 4")
 				}
 			}
 		}(peerId, t)
