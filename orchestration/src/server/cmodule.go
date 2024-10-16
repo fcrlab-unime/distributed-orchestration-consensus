@@ -396,7 +396,7 @@ type AppendEntriesReply struct {
 
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	cm.Mu.Lock()
-	//defer cm.Mu.Unlock()
+	defer cm.Mu.Unlock()
 	voteElabTime := time.Now()
 	if cm.state == Dead {
 		return nil
@@ -484,7 +484,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteElabTime)
 	cm.Dlog("AppendEntries reply: %+v", *reply)
-	cm.Mu.Unlock()
 	return nil
 }
 
