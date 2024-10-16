@@ -97,7 +97,7 @@ func waitStart(server *s.Server) {
 	// Counter of the accepted connections
 	index := 1
 	go func() {
-		server.SubmitChan <- struct{}{} // Invio non bloccante tramite goroutine
+		server.SubmitChan <- struct{}{}
 	}()
 
 	for {
@@ -147,9 +147,6 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	f.WriteString(fmt.Sprintf("%v,%v\n", parseTime, parseDuration))
 	f.Close() */
 	for _, service := range services {
-		if os.Getenv("DEBUG") == "1" {
-			fmt.Println("Entering loop with first =", first)
-		}
 		// Creates different instances for each request
 		command := s.NewService(service, server)
 		//server.AddService(command)
