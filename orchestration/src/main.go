@@ -129,7 +129,7 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 	if err != nil {
 		return
 	}
-
+	first := true
 	/* parseTime := time.Now() */
 	// Parses the request
 	services, err := parseMessage(string(buf[0:n]))
@@ -150,6 +150,10 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		command := s.NewService(service, server)
 		//server.AddService(command)
 		//fmt.Println("Service added to the queue.")
+		if first {
+			first = false
+			server.SubmitChan <- struct{}{}
+		}
 		<-server.SubmitChan
 		if err == nil {
 			if os.Getenv("TIME") == "1" {
