@@ -396,7 +396,7 @@ type AppendEntriesReply struct {
 
 func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
 	cm.Mu.Lock()
-	defer cm.Mu.Unlock()
+	//defer cm.Mu.Unlock()
 	voteElabTime := time.Now()
 	if cm.state == Dead {
 		return nil
@@ -456,7 +456,7 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 				cm.Mu.Unlock()
 				cm.newCommitReadyChan <- struct{}{}
 				<-cm.commitSendDoneChan
-				cm.Mu.Lock()
+				//cm.Mu.Lock()
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -483,14 +483,8 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 
 	reply.Term = cm.currentTerm
 	reply.VoteElabTime = time.Since(voteElabTime)
-	/* f, err := os.OpenFile(fmt.Sprintf("/log/appendEntryElab-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		panic(err)
-	}
-	f.WriteString(fmt.Sprintf("%v\n", reply.VoteElabTime))
-	f.Close() */
 	cm.Dlog("AppendEntries reply: %+v", *reply)
-
+	cm.Mu.Unlock()
 	return nil
 }
 
@@ -529,19 +523,10 @@ func (cm *ConsensusModule) Election(index ...int) {
 
 			cm.Dlog("sending RequestVote to %d: %+v", peerId, args)
 			var reply RequestVoteReply
-			/* electionStartTime := time.Now() */
 			if os.Getenv("TIME") == "1" {
 				cm.server.Times[index[0]].SetStartTime("EN1", t)
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.RequestVote", args, &reply); err == nil {
-				/* roundTripTime := time.Since(electionStartTime)
-				electionNetTime := roundTripTime - reply.VoteElabTime
-				f, err := os.OpenFile(fmt.Sprintf("/log/electionNetwork-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-				if err != nil {
-					panic(err)
-				}
-				f.WriteString(fmt.Sprintf("%v,%v\n", electionStartTime, electionNetTime))
-				f.Close() */
 				cm.Mu.Lock()
 				if os.Getenv("TIME") == "1" {
 					cm.server.Times[index[0]].Mu.Lock()
@@ -577,7 +562,6 @@ func (cm *ConsensusModule) Election(index ...int) {
 							} else {
 								cm.startLeader()
 							}
-							/* cm.startLeader() */
 							return
 						}
 					}
@@ -631,7 +615,6 @@ func (cm *ConsensusModule) startLeader(index ...int) {
 				} else {
 					cm.leaderSendAEs()
 				}
-				/* cm.leaderSendAEs() */
 			}
 		}
 	}(tmp)
@@ -674,19 +657,10 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 			cm.Mu.Unlock()
 			cm.Dlog("sending AppendEntries to %v: ni=%d, args=%+v", peerId, ni, args)
 			var reply AppendEntriesReply
-			/* appendEntryStartTime := time.Now() */
 			if os.Getenv("TIME") == "1" && index != nil {
 				cm.server.Times[index[0]].SetStartTime("VCN1", t)
 			}
 			if err := cm.server.Call(peerId, "ConsensusModule.AppendEntries", args, &reply); err == nil {
-				/* roundTripTime := time.Since(appendEntryStartTime)
-				appendEntryNetTime := roundTripTime - reply.VoteElabTime
-				f, err := os.OpenFile(fmt.Sprintf("/log/appendEntryNetwork-%d.txt", cm.currentTerm), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-				if err != nil {
-					panic(err)
-				}
-				f.WriteString(fmt.Sprintf("%v,%v\n", appendEntryStartTime, appendEntryNetTime))
-				f.Close() */
 				cm.Mu.Lock()
 				if os.Getenv("TIME") == "1" && index != nil {
 					cm.server.Times[index[0]].Mu.Lock()
@@ -733,7 +707,6 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 							} else {
 								cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							}
-							//cm.persistToStorage(cm.log[savedCommitIndex+1 : cm.commitIndex+1])
 							cm.newCommitReadyChan <- struct{}{}
 							cm.triggerAEChan <- struct{}{}
 						} else {
