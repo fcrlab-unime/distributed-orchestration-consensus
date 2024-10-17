@@ -22,10 +22,10 @@ WORKDIR /home/raft
 #RUN ls -la && sleep 15s #DEBUG: verify everithing is in the right path
 
 #CREATE GO PROJECT AND INSTALL DEPENDENCIES
-RUN go mod init raft
-RUN go get golang.org/x/exp/slices
-RUN go get gopkg.in/yaml.v3
-RUN go mod tidy
+#RUN go mod init raft
+#RUN go get golang.org/x/exp/slices
+#RUN go get gopkg.in/yaml.v3
+#RUN go mod tidy
 #RUN cat go.mod && sleep 60s #DEBUG: verify go dependencies
 
 #BUILD GO PROJECT
