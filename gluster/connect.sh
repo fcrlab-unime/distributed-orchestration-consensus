@@ -14,7 +14,7 @@ DONE=false
 echo "Scanning for peers..."
 while read line; do
     echo $line
-    RES=$(timeout 1s gluster peer probe $line 2>&1)
+    RES=$(timeout 5s gluster peer probe $line 2>&1)
     echo $RES
     if grep -vq "localhost" <<< "$RES"; then
         if $(grep -q "success" <<< "$RES") || $(grep -q "already part of" <<< "$RES") ; then
