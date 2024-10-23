@@ -276,7 +276,7 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 					}
 				}
 				//cm.server.deleteDeployedService()
-				//cm.server.SubmitChan <- struct{}{}
+				cm.server.SubmitChan <- struct{}{}
 			}
 		}
 	}
