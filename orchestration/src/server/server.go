@@ -39,8 +39,7 @@ type Server struct {
 	quit  chan interface{}
 	wg    sync.WaitGroup
 
-	Times      map[int]*test.Times
-	SubmitChan chan struct{}
+	Times map[int]*test.Times
 	//toSubmit []Service
 }
 
@@ -56,7 +55,6 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.quit = make(chan interface{})
 	s.Times = make(map[int]*test.Times)
 	//s.toSubmit = []Service{}
-	s.SubmitChan = make(chan struct{})
 	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready)
 	return s
 }
