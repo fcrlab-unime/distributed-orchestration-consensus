@@ -39,6 +39,28 @@ echo "Selected gateways: ${SELECTED_ADDRESSES[@]}"
 go run ../client/client.go -f $1 "${SELECTED_ADDRESSES[@]}"
 sleep $SLEEP_TIME
 
+#STOP THE DISTRIBUTED SYSTEM
+echo "Stopping the distributed system..."
+DOWN_COMMAND="cd /home/pi/distributed-orchestration-consensus && docker compose down"
+
+while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+
+  USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
+  PORT=$(echo "$HOST" | cut -d ':' -f 2)
+
+  echo "Executing command on $USER_HOST (port $PORT)..."
+  { ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER_HOST" "$DOWN_COMMAND"; } < /dev/null
+
+  if [ $? -eq 0 ]; then
+    echo "Command executed successfully on $USER_HOST"
+  else
+    echo "Failed to execute command on $USER_HOST"
+  fi
+
+  echo "-------------------------------------------"
+
+done < "$HOSTS_FILE"
+
 #SAVE THE RESULTS
 echo "Saving the results..."
 
@@ -48,29 +70,32 @@ PORT=$(echo "$HOST_TO_SAVE" | cut -d ':' -f 2)
 
 mkdir -p ./results/r$1g$2
 
-SAVE_COMMAND="scp -o StrictHostKeyChecking=no -r -P $PORT $USER_HOST:/var/lib/docker/volumes/distributed-orchestration-consensus_gluster/_data/ ./results/r$1g$2"
-
+SAVE_COMMAND="ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST '/home/pi/distributed-orchestration-consensus/experiments/backup_test.sh'"
 { $SAVE_COMMAND; } < /dev/null
-
 if [ $? -eq 0 ]; then
-  echo "Results saved successfully from $IP_ADDRESS"
+  echo "Results saved successfully on $IP_ADDRESS"
 else
-  echo "Failed to save results from $IP_ADDRESS"
+  echo "Failed to save results on $IP_ADDRESS"
 fi
-  
 echo "-------------------------------------------"
 
-#STOP THE DISTRIBUTED SYSTEM
-echo "Stopping the distributed system..."
-DOWN_COMMAND="cd /home/pi/distributed-orchestration-consensus && docker compose down && docker volume rm distributed-orchestration-consensus_gluster"
+#DOWNLOAD THE RESULTS
+echo "Downloading the results..."
+scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.txt ./results/r$1g$2/.
+scp -r -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/cpu ./results/r$1g$2/.
+echo "Results downloaded successfully from $IP_ADDRESS"
+echo "-------------------------------------------"
 
+#DELETE VOLUMES
+echo "Deleting volumes..."
+DELETE_COMMAND="docker volume rm distributed-orchestration-consensus_gluster"
 while IFS= read -r HOST || [[ -n "$HOST" ]]; do
 
   USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
   PORT=$(echo "$HOST" | cut -d ':' -f 2)
 
   echo "Executing command on $USER_HOST (port $PORT)..."
-  { ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER_HOST" "$DOWN_COMMAND"; } < /dev/null
+  { ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER_HOST" "$DELETE_COMMAND"; } < /dev/null
 
   if [ $? -eq 0 ]; then
     echo "Command executed successfully on $USER_HOST"
