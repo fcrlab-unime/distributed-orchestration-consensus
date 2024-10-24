@@ -105,22 +105,22 @@ fi
 echo "-------------------------------------------"
 
 #DELETE VOLUMES
-#echo "Deleting volumes..."
-#DELETE_COMMAND="docker volume rm distributed-orchestration-consensus_gluster"
-#while IFS= read -r HOST || [[ -n "$HOST" ]]; do
-#
-#  USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
-#  PORT=$(echo "$HOST" | cut -d ':' -f 2)
-#
-#  echo "Executing command on $USER_HOST (port $PORT)..."
-#  { ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER_HOST" "$DELETE_COMMAND"; } < /dev/null
-#
-#  if [ $? -eq 0 ]; then
-#    echo "Command executed successfully on $USER_HOST"
-#  else
-#    echo "Failed to execute command on $USER_HOST"
-#  fi
-#
-#  echo "-------------------------------------------"
-#
-#done < "$HOSTS_FILE"
+echo "Deleting volumes..."
+DELETE_COMMAND="docker volume rm distributed-orchestration-consensus_gluster"
+while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+
+  USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
+  PORT=$(echo "$HOST" | cut -d ':' -f 2)
+
+  echo "Executing command on $USER_HOST (port $PORT)..."
+  { ssh -o StrictHostKeyChecking=no -p "$PORT" "$USER_HOST" "$DELETE_COMMAND"; } < /dev/null
+
+  if [ $? -eq 0 ]; then
+    echo "Command executed successfully on $USER_HOST"
+  else
+    echo "Failed to execute command on $USER_HOST"
+  fi
+
+  echo "-------------------------------------------"
+
+done < "$HOSTS_FILE"
