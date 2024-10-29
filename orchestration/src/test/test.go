@@ -62,7 +62,7 @@ func NewTimesStruct(serverId int) *Times {
 }
 
 func (times *Times) SetDurationAndWrite(index int, which string, start time.Time) {
-	mess := strconv.Itoa(index) + "," + time.Since(start).String()
+	mess := strconv.Itoa(index) + "," + time.Now().String()
 	times.Mu.Lock()
 	defer times.Mu.Unlock()
 	switch {
