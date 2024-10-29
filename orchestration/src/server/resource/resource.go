@@ -1,27 +1,28 @@
 package load
 
 import (
-	"github.com/shirou/gopsutil/cpu"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shirou/gopsutil/cpu"
 )
 
 func getCPUPercent() float64 {
 	// Gets per-core CPU usage in 5 ms
-	perc, err :=  cpu.Percent(5 * time.Millisecond, true)
+	perc, err := cpu.Percent(5*time.Millisecond, true)
 	sum := 0.0
-	
+
 	// Sums all the usages
-	for _,core := range perc {
+	for _, core := range perc {
 		sum += core
 	}
 	if err != nil {
 		return 0
 	}
-	
+
 	// Returns the average
 	return sum / float64(len(perc))
 }
@@ -30,7 +31,7 @@ func getMem() (total float64, free float64) {
 	// Reads the /proc/meminfo file
 	contents, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
-		return 
+		return
 	}
 
 	// Parses the file
@@ -63,7 +64,7 @@ func getMem() (total float64, free float64) {
 
 func getMemPercent() float64 {
 	total, free := getMem()
-	return 100 * (1 - free / total)
+	return 100 * (1 - free/total)
 }
 
 func getResources() (cpu float64, mem float64) {
@@ -71,10 +72,10 @@ func getResources() (cpu float64, mem float64) {
 }
 
 func WeightedSum(a float64, b float64, weightA float64, weightB float64) float64 {
-	return (a * weightA + b * weightB) / (weightA + weightB)
+	return (a*weightA + b*weightB) / (weightA + weightB)
 }
 
-func GetLoadLevel() (int, float64) {
+func GetLoadLevel() (int, float64, float64) {
 	loadLevel := 0
 	cpu, mem := getResources()
 	sum := int(WeightedSum(cpu, mem, 0.5, 0.5) / 10)
@@ -86,5 +87,5 @@ func GetLoadLevel() (int, float64) {
 		loadLevel = sum
 	}
 
-	return loadLevel, cpu
+	return loadLevel, cpu, mem
 }

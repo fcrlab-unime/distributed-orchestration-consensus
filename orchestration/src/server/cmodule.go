@@ -769,16 +769,17 @@ func (cm *ConsensusModule) Pause() {
 
 func (cm *ConsensusModule) MonitorLoad() {
 	var cpu float64
+	var mem float64
 	var load int
 	for {
 		cm.Mu.Lock()
 		//cm.Dlog("Function MonitorLoad acquired lock on CM")
-		load, cpu = l.GetLoadLevel()
+		load, cpu, mem = l.GetLoadLevel()
 		cm.Mu.Unlock()
 		//cm.Dlog("Function MonitorLoad released lock on CM")
 		select {
 		case <-cm.CPUChan:
-			go cm.MonitorForTest(&cpu)
+			go cm.MonitorForTest(&cpu, &mem)
 		default:
 			cm.Mu.Lock()
 			//cm.Dlog("Function MonitorLoad acquired lock on CM")
@@ -790,24 +791,25 @@ func (cm *ConsensusModule) MonitorLoad() {
 	}
 }
 
-func (cm *ConsensusModule) MonitorForTest(cpu *float64) {
+func (cm *ConsensusModule) MonitorForTest(cpu *float64, mem *float64) {
 	timer := time.NewTimer(8 * time.Millisecond)
-	folderPath := "/log/cpu/"
+	folderPath := "/log/resources/"
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		os.MkdirAll(folderPath, os.ModePerm)
 	}
-	f, err := os.OpenFile(folderPath+strconv.Itoa(cm.id)+".txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(folderPath+strconv.Itoa(cm.id)+".csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		panic(err)
 	}
-	f.WriteString("Times,Perc\n")
+	f.WriteString("Times,Cpu,Mem\n")
 	for {
 		<-timer.C
 		timer.Reset(8 * time.Millisecond)
-		when := time.Since(cm.StartTime)
+		//when := time.Since(cm.StartTime)
+		when := time.Now().String()
 		cm.Mu.Lock()
 		//cm.Dlog("Function MonitorForTest acquired lock on CM")
-		f.WriteString(fmt.Sprintf("%v,%.2f\n", when, *cpu))
+		f.WriteString(fmt.Sprintf("%v,%.2f,%.2f\n", when, *cpu, *mem))
 		cm.Mu.Unlock()
 		//cm.Dlog("Function MonitorForTest released lock on CM")
 	}
