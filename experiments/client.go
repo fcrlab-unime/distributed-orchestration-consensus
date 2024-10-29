@@ -10,8 +10,9 @@ import (
 
 func main() {
 	fmt.Println("Client module started.")
-	reqN := 1
-	flag.IntVar(&reqN, "f", 1, "Number of requests to send")
+	reqN := 1.0
+	//flag.IntVar(&reqN, "f", 1, "Number of requests per second to send")
+	flag.Float64Var(&reqN, "f", 1, "Number of requests per second to send")
 	flag.Parse()
 
 	i, c := 0, 0
