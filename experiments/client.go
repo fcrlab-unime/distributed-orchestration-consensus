@@ -16,7 +16,7 @@ func main() {
 
 	i, c := 0, 0
 	timer := time.NewTimer(20 * time.Second)
-	message, _ := os.ReadFile(os.Getenv("HOME") + "./test.yaml")
+	message, _ := os.ReadFile(os.Getenv("HOME") + "/distributed-orchestration-consensus/experiments/test.yaml")
 	for {
 		select {
 		case <-time.After(time.Duration(1000/reqN-50) * time.Millisecond):
