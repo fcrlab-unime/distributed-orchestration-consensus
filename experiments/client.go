@@ -49,7 +49,7 @@ func main() {
 		conn.Close()
 
 		c++
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(time.Duration(1000/reqN-50) * time.Millisecond)
 		//case <-timer.C:
 		if c >= 100 {
 			fmt.Printf("\nSent %d messages\n", c)
