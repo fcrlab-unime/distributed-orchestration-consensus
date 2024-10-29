@@ -94,7 +94,7 @@ sleep $SLEEP_TIME
 echo "Downloading the results from $IP_ADDRESS..."
 scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.txt ./results/r$1g$2/.
 scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.csv ./results/r$1g$2/.
-scp -r -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/cpu ./results/r$1g$2/.
+scp -r -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/resources ./results/r$1g$2/.
 echo "-------------------------------------------"
 
 #CLEAN THE BACKUP
