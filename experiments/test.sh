@@ -72,9 +72,9 @@ sleep $SLEEP_TIME
 #SAVE THE RESULTS
 echo "Saving the results..."
 
-HOST_TO_SAVE=$(head -n 1 "$HOSTS_FILE")
-USER_HOST=$(echo "$HOST_TO_SAVE" | cut -d ':' -f 1)
-PORT=$(echo "$HOST_TO_SAVE" | cut -d ':' -f 2)
+#HOST_TO_SAVE=$(head -n 1 "$HOSTS_FILE")
+#USER_HOST=$(echo "$HOST_TO_SAVE" | cut -d ':' -f 1)
+#PORT=$(echo "$HOST_TO_SAVE" | cut -d ':' -f 2)
 
 mkdir -p ./results/r$1g$2
 
@@ -86,7 +86,15 @@ mkdir -p ./results/r$1g$2
 #  echo "Failed to save results on $IP_ADDRESS"
 #  exit 1
 #fi
-ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/backup_test.sh'
+while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+
+  USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
+  PORT=$(echo "$HOST" | cut -d ':' -f 2)
+
+  ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/backup_test.sh'
+
+done < "$HOSTS_FILE"
+
 echo "-------------------------------------------"
 
 sleep $SLEEP_TIME
