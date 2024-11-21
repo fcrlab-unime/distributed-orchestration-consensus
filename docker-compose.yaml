@@ -6,6 +6,7 @@ services:
       - .env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - test:/test
     privileged: true
     depends_on:
           - gluster
@@ -20,3 +21,4 @@ services:
 
 volumes:
   gluster:
+  test:
