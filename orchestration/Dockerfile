@@ -34,6 +34,7 @@ RUN go build main.go
 #CREATE NEEDED FOLDERS
 RUN mkdir services/
 RUN mkdir /log
+RUN mkdir /test
 
 #SETTING DEFAULT ENV VARIABLES
 ENV RPC_PORT=4000
