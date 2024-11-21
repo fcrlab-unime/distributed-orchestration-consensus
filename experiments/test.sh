@@ -96,13 +96,14 @@ while IFS= read -r HOST || [[ -n "$HOST" ]]; do
   
   #DOWNLOAD THE RESULTS
   echo "Downloading the results from $USER_HOST..."
-  scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.txt ./results/r$1g$2/.
-  scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.csv ./results/r$1g$2/.
+  #scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.txt ./results/r$1g$2/.
+  #scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.csv ./results/r$1g$2/.
   scp -r -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/resources ./results/r$1g$2/.
+  scp -r -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/times ./results/r$1g$2/.
 
   #CLEAN THE BACKUP
-  #echo "Cleaning the backup on $$USER_HOST..."
-  #ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'
+  echo "Cleaning the backup on $$USER_HOST..."
+  ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'
 
 done < "$HOSTS_FILE"
 
