@@ -56,7 +56,7 @@ func NewTimesStruct(serverId int) *Times {
 	times.WriteLogStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
 	times.WriteLogDuration = 0
 	times.Mu = sync.Mutex{}
-	folderPath := "/home/pi/results/times/"
+	folderPath := "/test/results/times/"
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		os.MkdirAll(folderPath, os.ModePerm)
 	}
