@@ -56,8 +56,11 @@ func NewTimesStruct(serverId int) *Times {
 	times.WriteLogStartTime, _ = time.Parse("2006-01-02 15:04:05", "1970-01-01 00:00:00")
 	times.WriteLogDuration = 0
 	times.Mu = sync.Mutex{}
-	times.File, _ = os.OpenFile("/log/times"+strconv.Itoa(serverId)+".csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
+	folderPath := "/home/pi/results/times/"
+	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
+		os.MkdirAll(folderPath, os.ModePerm)
+	}
+	times.File, _ = os.OpenFile(folderPath+strconv.Itoa(serverId)+".csv", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	return times
 }
 

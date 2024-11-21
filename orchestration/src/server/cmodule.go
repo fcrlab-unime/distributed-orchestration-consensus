@@ -793,7 +793,7 @@ func (cm *ConsensusModule) MonitorLoad() {
 
 func (cm *ConsensusModule) MonitorForTest(cpu *float64, mem *float64) {
 	timer := time.NewTimer(8 * time.Millisecond)
-	folderPath := "/log/resources/"
+	folderPath := "/home/pi/results/resources/"
 	if _, err := os.Stat(folderPath); os.IsNotExist(err) {
 		os.MkdirAll(folderPath, os.ModePerm)
 	}
