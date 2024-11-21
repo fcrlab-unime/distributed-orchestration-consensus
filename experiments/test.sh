@@ -120,7 +120,7 @@ echo "-------------------------------------------"
 
 #DELETE VOLUMES
 echo "Deleting volumes..."
-DELETE_COMMAND="docker volume rm distributed-orchestration-consensus_gluster"
+DELETE_COMMAND="docker volume rm distributed-orchestration-consensus_gluster distributed-orchestration-consensus_test"
 while IFS= read -r HOST || [[ -n "$HOST" ]]; do
 
   USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
