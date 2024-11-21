@@ -93,21 +93,20 @@ while IFS= read -r HOST || [[ -n "$HOST" ]]; do
 
   ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/backup_test.sh'
 
+  
+  #DOWNLOAD THE RESULTS
+  echo "Downloading the results from $USER_HOST..."
+  scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.txt ./results/r$1g$2/.
+  scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.csv ./results/r$1g$2/.
+  scp -r -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/resources ./results/r$1g$2/.
+  echo "-------------------------------------------"
+
+  #CLEAN THE BACKUP
+  echo "Cleaning the backup on $$USER_HOST..."
+  ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'
 done < "$HOSTS_FILE"
 
-echo "-------------------------------------------"
 
-sleep $SLEEP_TIME
-#DOWNLOAD THE RESULTS
-echo "Downloading the results from $IP_ADDRESS..."
-scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.txt ./results/r$1g$2/.
-scp -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/*.csv ./results/r$1g$2/.
-scp -r -o StrictHostKeyChecking=no -P $PORT $USER_HOST:/home/pi/results/resources ./results/r$1g$2/.
-echo "-------------------------------------------"
-
-#CLEAN THE BACKUP
-echo "Cleaning the backup on $IP_ADDRESS..."
-ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'
 #CLEAN_COMMAND="ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh/home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'"
 #{ $CLEAN_COMMAND; } < /dev/null
 #if [ $? -eq 0 ]; then
