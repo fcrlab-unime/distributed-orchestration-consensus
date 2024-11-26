@@ -104,7 +104,7 @@ while IFS= read -r HOST || [[ -n "$HOST" ]]; do
   #CLEAN THE BACKUP
   echo "Cleaning the backup on $USER_HOST..."
   ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'
-
+  echo "Cleaned the backup on $USER_HOST"
 done < "$HOSTS_FILE"
 
 
