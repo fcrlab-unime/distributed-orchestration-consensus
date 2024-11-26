@@ -5,12 +5,15 @@
 
 HOSTS_FILE="hosts.txt"
 
+mapfile -t HOSTS_LIST < "$HOSTS_FILE"
+
 #START THE DISTRIBUTED SYSTEM
 echo "Starting the distributed system..."
 UP_COMMAND="cd /home/pi/distributed-orchestration-consensus && docker compose up -d"
 SLEEP_TIME=25
 
-while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+#while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+for HOST in "${HOSTS_LIST[@]}"; do
 
   USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
   PORT=$(echo "$HOST" | cut -d ':' -f 2)
@@ -25,18 +28,19 @@ while IFS= read -r HOST || [[ -n "$HOST" ]]; do
   fi
   echo "-------------------------------------------"
   sleep $SLEEP_TIME
-done < "$HOSTS_FILE"
-
+#done < "$HOSTS_FILE"
+done
 #MOUNT THE DISTRIBUTED FILE SYSTEM
 #sh $HOMR/distributed-orchestration-consensus/experiments/gluster.sh
 
 #EXECUTE THE TESTS
 echo "Executing the tests..."
 IP_ADDRESSES=()
-while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+#while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+for HOST in "${HOSTS_LIST[@]}"; do
   IP_ADDRESS=$(echo "$HOST" | cut -d ':' -f 1 | cut -d '@' -f 2)
   IP_ADDRESSES+=("$IP_ADDRESS")
-done < "$HOSTS_FILE"
+done
 SELECTED_ADDRESSES=($(shuf -e "${IP_ADDRESSES[@]}" | head -n "$2"))
 echo "Selected gateways: ${SELECTED_ADDRESSES[@]}"
 go run ./client.go -f $1 "${SELECTED_ADDRESSES[@]}"
@@ -48,8 +52,8 @@ echo "\n-------------------------------------------"
 echo "Stopping the distributed system..."
 DOWN_COMMAND="cd /home/pi/distributed-orchestration-consensus && docker compose down"
 
-while IFS= read -r HOST || [[ -n "$HOST" ]]; do
-
+#while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+for HOST in "${HOSTS_LIST[@]}"; do
   USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
   PORT=$(echo "$HOST" | cut -d ':' -f 2)
 
@@ -65,7 +69,8 @@ while IFS= read -r HOST || [[ -n "$HOST" ]]; do
 
   echo "-------------------------------------------"
 
-done < "$HOSTS_FILE"
+#done < "$HOSTS_FILE"
+done
 
 sleep $SLEEP_TIME
 
@@ -86,7 +91,8 @@ mkdir -p ./results/r$1g$2
 #  echo "Failed to save results on $IP_ADDRESS"
 #  exit 1
 #fi
-while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+#while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+for HOST in "${HOSTS_LIST[@]}"; do
 
   USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
   PORT=$(echo "$HOST" | cut -d ':' -f 2)
@@ -105,7 +111,8 @@ while IFS= read -r HOST || [[ -n "$HOST" ]]; do
   echo "Cleaning the backup on $USER_HOST..."
   ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh /home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'
   echo "Cleaned the backup on $USER_HOST"
-done < "$HOSTS_FILE"
+#done < "$HOSTS_FILE"
+done
 
 
 #CLEAN_COMMAND="ssh -o StrictHostKeyChecking=no -p $PORT $USER_HOST 'sudo sh/home/pi/distributed-orchestration-consensus/experiments/delete_backup.sh'"
@@ -121,7 +128,8 @@ echo "-------------------------------------------"
 #DELETE VOLUMES
 echo "Deleting volumes..."
 DELETE_COMMAND="docker volume rm distributed-orchestration-consensus_gluster distributed-orchestration-consensus_test"
-while IFS= read -r HOST || [[ -n "$HOST" ]]; do
+for HOST in "${HOSTS_LIST[@]}"; do
+#while IFS= read -r HOST || [[ -n "$HOST" ]]; do
 
   USER_HOST=$(echo "$HOST" | cut -d ':' -f 1)
   PORT=$(echo "$HOST" | cut -d ':' -f 2)
@@ -138,4 +146,5 @@ while IFS= read -r HOST || [[ -n "$HOST" ]]; do
 
   echo "-------------------------------------------"
 
-done < "$HOSTS_FILE"
+#done < "$HOSTS_FILE"
+done
