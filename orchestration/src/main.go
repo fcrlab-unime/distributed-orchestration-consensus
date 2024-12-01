@@ -96,9 +96,11 @@ func waitStart(server *s.Server) {
 
 	// Counter of the accepted connections
 	index := 1
-	go func() {
+	/* go func() {
 		server.SubmitChan <- struct{}{}
-	}()
+	}() */
+
+	go server.SubmitCommands()
 
 	for {
 		conn, err := listener.Accept()
@@ -114,13 +116,6 @@ func waitStart(server *s.Server) {
 			go handleConnection(conn, server)
 		}
 	}
-	/* for {
-		conn, err := listener.Accept()
-		if err != nil {
-			panic(err)
-		}
-		go handleConnection(conn, server)
-	} */
 }
 
 func handleConnection(conn net.Conn, server *s.Server, index ...int) {
@@ -132,34 +127,23 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		return
 	}
 
-	/* parseTime := time.Now() */
-	// Parses the request
 	services, err := parseMessage(string(buf[0:n]))
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
-	}
-	/* parseDuration := time.Since(parseTime)
+	} else {
+		for _, service := range services {
+			// Creates different instances for each request
+			command := s.NewService(service, server, index[0])
+			server.AppendCommand(command)
+			//<-server.SubmitChan
 
-	f, err := os.OpenFile("/log/requestElab.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		panic(err)
-	}
-	f.WriteString(fmt.Sprintf("%v,%v\n", parseTime, parseDuration))
-	f.Close() */
-	for _, service := range services {
-		// Creates different instances for each request
-		command := s.NewService(service, server)
-		//server.AddService(command)
-		//fmt.Println("Service added to the queue.")
-		<-server.SubmitChan
-		if err == nil {
-			if os.Getenv("TIME") == "1" {
+			/* if os.Getenv("TIME") == "1" {
 				server.Times[index[0]].SetDurationAndWrite(index[0], "RE", server.GetConsensusModule().StartTime)
 				server.Submit(command, index[0])
 			} else {
 				server.Submit(command)
-			}
-			/* server.Submit(command) */
+			} */
+
 		}
 	}
 }

@@ -39,7 +39,7 @@ type Server struct {
 
 	Times      map[int]*test.Times
 	SubmitChan chan struct{}
-	//toSubmit []Service
+	commands   []Service
 }
 
 func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commitChan chan<- CommitEntry) *Server {
@@ -53,24 +53,25 @@ func NewServer(serverId int, storage st.Storage, ready <-chan interface{}, commi
 	s.commitChan = commitChan
 	s.quit = make(chan interface{})
 	s.Times = make(map[int]*test.Times)
-	//s.toSubmit = []Service{}
 	s.SubmitChan = make(chan struct{})
+	s.commands = []Service{}
 	s.cm = NewConsensusModule(s.serverId, s, s.storage, s.ready)
 	return s
 }
 
-/* func (s *Server) AddService(service *Service) {
-	s.toSubmit = append(s.toSubmit, *service)
+func (s *Server) AppendCommand(command Service) {
+	s.commands = append(s.commands, command)
+	if len(s.commands) == 1 {
+		s.SubmitChan <- struct{}{}
+	}
 }
 
-func (s *Server) deleteDeployedService() {
-	if len(s.toSubmit) > 1 {
-		s.toSubmit = s.toSubmit[1:]
-	} else {
-		s.toSubmit = []Service{}
+func (s *Server) DeleteFirstCommand() {
+	s.commands = s.commands[1:]
+	if len(s.commands) > 0 {
+		s.SubmitChan <- struct{}{}
 	}
-	fmt.Println("lenght after deletion %d", len(s.toSubmit))
-} */
+}
 
 func (s *Server) Serve(ip net.Addr, wg *sync.WaitGroup, ready chan interface{}) {
 	s.mu.Lock()
@@ -203,51 +204,14 @@ type RPCProxy struct {
 }
 
 func (rpp *RPCProxy) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
-	/*
-		if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
-			dice := rand.Intn(10)
-			if dice == 9 {
-				rpp.cm.Dlog("drop RequestVote")
-				return fmt.Errorf("RPC failed")
-			} else if dice == 8 {
-				rpp.cm.Dlog("delay RequestVote")
-				time.Sleep(75 * time.Millisecond)
-			}
-		} else {
-			time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-		}*/
 	return rpp.cm.RequestVote(args, reply)
 }
 
 func (rpp *RPCProxy) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
-	/* if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
-		dice := rand.Intn(10)
-		if dice == 9 {
-			rpp.cm.Dlog("drop AppendEntries")
-			return fmt.Errorf("RPC failed")
-		} else if dice == 8 {
-			rpp.cm.Dlog("delay AppendEntries")
-			time.Sleep(75 * time.Millisecond)
-		}
-	} else {
-		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-	} */
 	return rpp.cm.AppendEntries(args, reply)
 }
 
 func (rpp *RPCProxy) Deploy(args DeployArgs, reply *DeployReply) error {
-	/* if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
-		dice := rand.Intn(10)
-		if dice == 9 {
-			rpp.cm.Dlog("drop AppendEntries")
-			return fmt.Errorf("RPC failed")
-		} else if dice == 8 {
-			rpp.cm.Dlog("delay AppendEntries")
-			time.Sleep(75 * time.Millisecond)
-		}
-	} else {
-		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-	} */
 	return rpp.cm.Deploy(args, reply)
 }
 
@@ -263,25 +227,28 @@ func (s *Server) GetConsensusModule() *ConsensusModule {
 	return s.cm
 }
 
-func (s *Server) Submit(command *Service, index ...int) {
+// func (s *Server) Submit(command *Service, index ...int) {
+func (s *Server) Submit(index ...int) {
 	if os.Getenv("TIME") == "1" {
 		s.cm.Election(index[0])
 	} else {
 		s.cm.Election()
 	}
-	/* s.cm.Election() */
 	<-s.cm.ElectionChan
 	if os.Getenv("TIME") == "1" {
 		s.Times[index[0]].SetDurationAndWrite(index[0], "ENVE", s.GetConsensusModule().StartTime)
 		s.Times[index[0]].SetStartTime("CP")
-		s.cm.Voting(command, index[0])
+		s.cm.Voting(&s.commands[0], s.commands[0].index)
 	} else {
-		s.cm.Voting(command)
+		s.cm.Voting(&s.commands[0])
 	}
-	/* s.cm.Voting(command) */
 	<-s.cm.VotingChan
-	/* if len(s.toSubmit) == 0 {
-		s.cm.Pause()
-	} */
-	s.cm.Pause()
+	//s.cm.Pause()
+}
+
+func (s *Server) SubmitCommands() {
+	for {
+		<-s.SubmitChan
+		s.Submit()
+	}
 }

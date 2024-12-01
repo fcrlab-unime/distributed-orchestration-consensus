@@ -16,9 +16,11 @@ type Service struct {
 	ServiceID string
 	// Type of service
 	Type SType
+
+	index int
 }
 
-func NewService(command string, server *Server) Service {
+func NewService(command string, server *Server, index ...int) Service {
 
 	service := Service{}
 
@@ -28,6 +30,12 @@ func NewService(command string, server *Server) Service {
 		fmt.Printf("Error: %v\n", err)
 	}
 	service.Type = SType(serviceMap["Type"])
+
+	if len(index) > 0 {
+		service.index = index[0]
+	} else {
+		service.index = -1
+	}
 
 	return service
 }

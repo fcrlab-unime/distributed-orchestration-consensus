@@ -14,11 +14,9 @@ import (
 	"reflect"
 	l "server/resource"
 
-	//"sort"
 	st "storage"
 	"strconv"
 
-	//"strings"
 	"sync"
 	"time"
 )
@@ -194,6 +192,8 @@ func (cm *ConsensusModule) Voting(command *Service, index ...int) {
 		cm.Dlog("... log=%v", cm.log)
 		cm.triggerAEChan <- struct{}{}
 	} else {
+		//RETRANSMISSION
+		//cm.server.Submit(command)
 		cm.Mu.Unlock()
 		cm.Dlog("Function voting released lock on CM")
 	}
@@ -275,8 +275,8 @@ func (cm *ConsensusModule) persistToStorage(logs []LogEntry, index ...int) {
 						cm.server.Times[index[0]].SetDurationAndWrite(cm.currentTerm, "TR", cm.StartTime)
 					}
 				}
-				//cm.server.deleteDeployedService()
-				cm.server.SubmitChan <- struct{}{}
+				cm.server.DeleteFirstCommand()
+				//cm.server.SubmitChan <- struct{}{}
 			}
 		}
 	}
@@ -324,16 +324,12 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 
 	cm.Mu.Unlock()
 	cm.Dlog("Function RequestVote released lock on CM")
-	/* if cm.state != Candidate {
-		runVoteDelay(args.LoadLevel)
-	} */
 	cm.Mu.Lock()
 	cm.Dlog("Function RequestVote acquired lock on CM")
 	if cm.currentTerm == args.Term &&
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
 		(args.LastLogTerm > lastLogTerm ||
 			(args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)) {
-		//cm.Dlog("waited for vote delay of %v", time.Duration(1000/args.LoadLevel)*time.Millisecond)
 		reply.VoteGranted = true
 		reply.LoadLevel = cm.loadLevel
 		cm.votedFor = args.CandidateId
@@ -428,14 +424,6 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 			if args.LeaderCommit > cm.commitIndex {
 				cm.commitIndex = intMin(args.LeaderCommit, len(cm.log)-1)
 				cm.Dlog("... setting commitIndex=%d", cm.commitIndex)
-				//cm.Mu.Unlock()
-				//cm.Dlog("Function AppendEntries released lock on CM - before commit ready chan")
-				//cm.newCommitReadyChan <- struct{}{}
-				//cm.Dlog("Function AppendEntries has put a structure inside commit ready chan")
-				//<-cm.commitSendDoneChan
-				//cm.Dlog("Function AppendEntries is going to acquire lock on CM - after commit ready chan")
-				//cm.Mu.Lock()
-				//cm.Dlog("Function AppendEntries acquired lock on CM - after commit ready chan")
 			}
 		} else {
 			// No match for PrevLogIndex/PrevLogTerm. Populate
@@ -467,14 +455,10 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	return nil
 }
 
-/* func runVoteDelay(loadLevel int) {
-	delay := time.Duration(100/loadLevel) * time.Millisecond
-	time.Sleep(delay)
-} */
-
 // startElection starts a new election with this CM as a candidate.
 // Expects cm.Mu to be locked.
 func (cm *ConsensusModule) Election(index ...int) {
+	//func (cm *ConsensusModule) Election(command *Service, index ...int) {
 	cm.Mu.Lock()
 	cm.Dlog("Function Election acquired lock on CM")
 	defer cm.Mu.Unlock()
@@ -529,6 +513,8 @@ func (cm *ConsensusModule) Election(index ...int) {
 				if reply.Term > savedCurrentTerm {
 					cm.Dlog("term out of date in RequestVoteReply")
 					cm.becomeFollower(reply.Term)
+					//RETRANSMISSION
+					//cm.server.Submit(command)
 					return
 				} else if reply.Term == savedCurrentTerm {
 					if reply.VoteGranted {
@@ -602,7 +588,6 @@ func (cm *ConsensusModule) startLeader(index ...int) {
 				} else {
 					cm.leaderSendAEs()
 				}
-				/* cm.leaderSendAEs() */
 			}
 		}
 	}(tmp)
@@ -665,6 +650,8 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 				if reply.Term > cm.currentTerm {
 					cm.Dlog("term out of date in heartbeat reply")
 					cm.becomeFollower(reply.Term)
+					//RETRANSMISSION
+					//cm.server.Submit(command)
 					cm.Mu.Unlock()
 					cm.Dlog("Function inside leaderSendAEs released lock on CM - 2")
 					return
@@ -759,13 +746,13 @@ func intMin(a, b int) int {
 	return b
 }
 
-func (cm *ConsensusModule) Pause() {
+/* func (cm *ConsensusModule) Pause() {
 	cm.Mu.Lock()
 	cm.Dlog("Function Pause acquired lock on CM")
 	cm.stopSendingAEsChan <- struct{}{}
 	cm.Mu.Unlock()
 	cm.Dlog("Function Pause released lock on CM")
-}
+} */
 
 func (cm *ConsensusModule) MonitorLoad() {
 	var cpu float64
