@@ -233,7 +233,7 @@ func (s *Server) Submit(index ...int) {
 		return
 	}
 	if os.Getenv("TIME") == "1" {
-		s.cm.Election(index[0])
+		s.cm.Election(s.commands[0].index)
 	} else {
 		s.cm.Election()
 	}
