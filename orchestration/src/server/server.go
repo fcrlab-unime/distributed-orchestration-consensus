@@ -239,7 +239,7 @@ func (s *Server) Submit(index ...int) {
 	}
 	<-s.cm.ElectionChan
 	if os.Getenv("TIME") == "1" {
-		s.Times[s.commands[0].index].SetDurationAndWrite(index[0], "ENVE", s.GetConsensusModule().StartTime)
+		s.Times[s.commands[0].index].SetDurationAndWrite(s.commands[0].index, "ENVE", s.GetConsensusModule().StartTime)
 		s.Times[s.commands[0].index].SetStartTime("CP")
 		s.cm.Voting(&s.commands[0], s.commands[0].index)
 	} else {
