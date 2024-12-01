@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -12,18 +13,17 @@ type SType string
 
 type Service struct {
 	// Unique ID of service
-	ServiceID		string
+	ServiceID string
 	// Type of service
-	Type 			SType
-
+	Type SType
 }
 
-func NewService(command string, server *Server) *Service {
-	
-	service := &Service{}
-	
+func NewService(command string, server *Server) Service {
+
+	service := Service{}
+
 	serviceMap := parseService(command)
-	service.ServiceID = fmt.Sprintf("%x", sha256.Sum256([]byte(serviceMap["Command"] + time.Now().String())))
+	service.ServiceID = fmt.Sprintf("%x", sha256.Sum256([]byte(serviceMap["Command"]+time.Now().String())))
 	if err := service.saveToFile(serviceMap["Command"]); err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
@@ -33,10 +33,10 @@ func NewService(command string, server *Server) *Service {
 }
 
 func parseService(command string) map[string]string {
-	
+
 	/* 	The first two lines of the command must be as follows:
 		1. ServiceType: <Docker|Kubernetes>
-	 	2. 
+	 	2.
 
 		Then, the rest of the command is the actual body of the command.
 		...
@@ -65,6 +65,6 @@ func (s *Service) saveToFile(command string) error {
 		os.Mkdir("services", 0700)
 	}
 
-	return os.WriteFile("services/" + s.ServiceID, []byte(command), 0700)
+	return os.WriteFile("services/"+s.ServiceID, []byte(command), 0700)
 
 }
