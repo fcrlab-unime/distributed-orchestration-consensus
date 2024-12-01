@@ -8,14 +8,12 @@ package server
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
 	st "storage"
 	"sync"
 	"test"
-	"time"
 )
 
 type Server struct {
@@ -205,23 +203,24 @@ type RPCProxy struct {
 }
 
 func (rpp *RPCProxy) RequestVote(args RequestVoteArgs, reply *RequestVoteReply) error {
-	if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
-		dice := rand.Intn(10)
-		if dice == 9 {
-			rpp.cm.Dlog("drop RequestVote")
-			return fmt.Errorf("RPC failed")
-		} else if dice == 8 {
-			rpp.cm.Dlog("delay RequestVote")
-			time.Sleep(75 * time.Millisecond)
-		}
-	} else {
-		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-	}
+	/*
+		if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
+			dice := rand.Intn(10)
+			if dice == 9 {
+				rpp.cm.Dlog("drop RequestVote")
+				return fmt.Errorf("RPC failed")
+			} else if dice == 8 {
+				rpp.cm.Dlog("delay RequestVote")
+				time.Sleep(75 * time.Millisecond)
+			}
+		} else {
+			time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
+		}*/
 	return rpp.cm.RequestVote(args, reply)
 }
 
 func (rpp *RPCProxy) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesReply) error {
-	if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
+	/* if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
 		dice := rand.Intn(10)
 		if dice == 9 {
 			rpp.cm.Dlog("drop AppendEntries")
@@ -232,12 +231,12 @@ func (rpp *RPCProxy) AppendEntries(args AppendEntriesArgs, reply *AppendEntriesR
 		}
 	} else {
 		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-	}
+	} */
 	return rpp.cm.AppendEntries(args, reply)
 }
 
 func (rpp *RPCProxy) Deploy(args DeployArgs, reply *DeployReply) error {
-	if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
+	/* if len(os.Getenv("RAFT_UNRELIABLE_RPC")) > 0 {
 		dice := rand.Intn(10)
 		if dice == 9 {
 			rpp.cm.Dlog("drop AppendEntries")
@@ -248,7 +247,7 @@ func (rpp *RPCProxy) Deploy(args DeployArgs, reply *DeployReply) error {
 		}
 	} else {
 		time.Sleep(time.Duration(1+rand.Intn(5)) * time.Millisecond)
-	}
+	} */
 	return rpp.cm.Deploy(args, reply)
 }
 

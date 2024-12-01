@@ -324,16 +324,16 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 
 	cm.Mu.Unlock()
 	cm.Dlog("Function RequestVote released lock on CM")
-	if cm.state != Candidate {
+	/* if cm.state != Candidate {
 		runVoteDelay(args.LoadLevel)
-	}
+	} */
 	cm.Mu.Lock()
 	cm.Dlog("Function RequestVote acquired lock on CM")
 	if cm.currentTerm == args.Term &&
 		(cm.votedFor == -1 || cm.votedFor == args.CandidateId) &&
 		(args.LastLogTerm > lastLogTerm ||
 			(args.LastLogTerm == lastLogTerm && args.LastLogIndex >= lastLogIndex)) {
-		cm.Dlog("waited for vote delay of %v", time.Duration(1000/args.LoadLevel)*time.Millisecond)
+		//cm.Dlog("waited for vote delay of %v", time.Duration(1000/args.LoadLevel)*time.Millisecond)
 		reply.VoteGranted = true
 		reply.LoadLevel = cm.loadLevel
 		cm.votedFor = args.CandidateId
@@ -467,10 +467,10 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	return nil
 }
 
-func runVoteDelay(loadLevel int) {
+/* func runVoteDelay(loadLevel int) {
 	delay := time.Duration(100/loadLevel) * time.Millisecond
 	time.Sleep(delay)
-}
+} */
 
 // startElection starts a new election with this CM as a candidate.
 // Expects cm.Mu to be locked.
