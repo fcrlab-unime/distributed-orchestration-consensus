@@ -229,6 +229,9 @@ func (s *Server) GetConsensusModule() *ConsensusModule {
 
 // func (s *Server) Submit(command *Service, index ...int) {
 func (s *Server) Submit(index ...int) {
+	if len(s.commands) == 0 {
+		return
+	}
 	if os.Getenv("TIME") == "1" {
 		s.cm.Election(index[0])
 	} else {

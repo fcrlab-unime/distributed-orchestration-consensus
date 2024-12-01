@@ -320,6 +320,8 @@ func (cm *ConsensusModule) RequestVote(args RequestVoteArgs, reply *RequestVoteR
 	if args.Term > cm.currentTerm {
 		cm.Dlog("... term out of date in RequestVote")
 		cm.becomeFollower(args.Term)
+		//RETRANSMISSION
+		cm.server.SubmitChan <- struct{}{}
 	}
 
 	cm.Mu.Unlock()
@@ -377,12 +379,16 @@ func (cm *ConsensusModule) AppendEntries(args AppendEntriesArgs, reply *AppendEn
 	if args.Term > cm.currentTerm {
 		cm.Dlog("... term out of date in AppendEntries")
 		cm.becomeFollower(args.Term)
+		//RETRANSMISSION
+		cm.server.SubmitChan <- struct{}{}
 	}
 
 	reply.Success = false
 	if args.Term == cm.currentTerm {
 		if cm.state != Follower {
 			cm.becomeFollower(args.Term)
+			//RETRANSMISSION
+			cm.server.SubmitChan <- struct{}{}
 		}
 
 		// Does our log contain an entry at PrevLogIndex whose term matches
@@ -514,7 +520,7 @@ func (cm *ConsensusModule) Election(index ...int) {
 					cm.Dlog("term out of date in RequestVoteReply")
 					cm.becomeFollower(reply.Term)
 					//RETRANSMISSION
-					//cm.server.Submit(command)
+					cm.server.SubmitChan <- struct{}{}
 					return
 				} else if reply.Term == savedCurrentTerm {
 					if reply.VoteGranted {
@@ -650,6 +656,7 @@ func (cm *ConsensusModule) leaderSendAEs(index ...int) {
 				if reply.Term > cm.currentTerm {
 					cm.Dlog("term out of date in heartbeat reply")
 					cm.becomeFollower(reply.Term)
+					cm.server.SubmitChan <- struct{}{}
 					//RETRANSMISSION
 					//cm.server.Submit(command)
 					cm.Mu.Unlock()
