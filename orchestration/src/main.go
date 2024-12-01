@@ -134,6 +134,9 @@ func handleConnection(conn net.Conn, server *s.Server, index ...int) {
 		for _, service := range services {
 			// Creates different instances for each request
 			command := s.NewService(service, server, index[0])
+			if os.Getenv("TIME") == "1" {
+				server.Times[index[0]].SetDurationAndWrite(index[0], "RE", server.GetConsensusModule().StartTime)
+			}
 			server.AppendCommand(command)
 			//<-server.SubmitChan
 
