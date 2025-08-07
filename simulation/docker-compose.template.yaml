@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  gluster:
+    image: gluster
+    privileged: true
+    env_file:
+      - .env
+    volumes:
+      - ./data/gluster-__IDX__:/data
+    networks:
+      - shared_net
+
+  orchestration:
+    image: orchestration
+    env_file:
+      - .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/test-__IDX__:/test
+    privileged: true
+    depends_on:
+      - gluster
+    networks:
+      - shared_net
+
+networks:
+  shared_net:
+    external: true
+    name: cluster_net
