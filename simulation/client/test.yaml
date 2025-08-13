@@ -1,0 +1,7 @@
+ServiceType: Docker
+
+version: '3.5'
+
+services:
+  raft:
+    image: hello-world
